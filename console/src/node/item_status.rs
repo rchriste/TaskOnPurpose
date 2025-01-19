@@ -64,11 +64,11 @@ impl IsActive for DependencyWithItemNode<'_> {
 #[derive(Clone, Debug)]
 pub(crate) enum UrgencyPlanWithItemNode<'e> {
     WillEscalate {
-        initial: SurrealUrgency,
+        initial: Option<SurrealUrgency>,
         triggers: Vec<TriggerWithItemNode<'e>>,
-        later: SurrealUrgency,
+        later: Option<SurrealUrgency>,
     },
-    StaysTheSame(SurrealUrgency),
+    StaysTheSame(Option<SurrealUrgency>),
 }
 
 #[derive(Clone, Debug)]
@@ -399,6 +399,10 @@ impl<'s> ItemStatus<'s> {
         }
     }
 
+    pub(crate) fn get_head_parent_items(&'s self) -> Vec<&'s ItemNode<'s>> {
+        todo!()
+    }
+
     pub(crate) fn get_self_and_parents_flattened(&'s self, filter: Filter) -> Vec<&'s Item<'s>> {
         //TODO This should be updated to return ItemNode from itself rather than calling into the next layer down
         self.item_node.get_self_and_parents(filter)
@@ -435,7 +439,7 @@ impl<'s> ItemStatus<'s> {
         &self.urgency_plan
     }
 
-    pub(crate) fn get_urgency_now(&self) -> Option<&SurrealUrgency> {
+    pub(crate) fn get_urgency_now(&self) -> Option<&Option<SurrealUrgency>> {
         self.item_node.get_urgency_now()
     }
 
@@ -585,7 +589,7 @@ fn calculate_parents<'s>(
     all_nodes: &'s HashMap<&'s RecordId, ItemNode<'s>>,
 ) -> Vec<&'s ItemNode<'s>> {
     item_node
-        .get_parents(Filter::All)
+        .get_immediate_parents(Filter::All)
         .map(|x| {
             all_nodes
                 .get(x.get_surreal_record_id())

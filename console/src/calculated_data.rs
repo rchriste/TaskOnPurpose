@@ -2,8 +2,8 @@ pub(crate) mod parent_lookup;
 
 use crate::{
     base_data::{
-        BaseData, event::Event, in_the_moment_priority::InTheMomentPriorityWithItemAction,
-        time_spent::TimeSpent,
+        event::Event, in_the_moment_priority::InTheMomentPriorityWithItemAction, item::Item,
+        time_spent::TimeSpent, BaseData,
     },
     node::{item_node::ItemNode, item_status::ItemStatus, mode_node::ModeNode},
     systems::do_now_list::current_mode::CurrentMode,
@@ -31,16 +31,17 @@ pub(crate) struct CalculatedData {
     #[covariant]
     items_status: HashMap<&'this RecordId, ItemStatus<'this>>,
 
-    #[borrows(items_status, base_data, items_nodes)]
-    #[covariant]
-    in_the_moment_priorities: Vec<InTheMomentPriorityWithItemAction<'this>>,
-
-    #[borrows(base_data)]
-    current_mode: CurrentMode,
-
     #[borrows(base_data)]
     #[covariant]
     mode_nodes: Vec<ModeNode<'this>>,
+
+    #[borrows(items_status, base_data, items_nodes, mode_nodes)]
+    #[covariant]
+    in_the_moment_priorities: Vec<InTheMomentPriorityWithItemAction<'this>>,
+
+    #[borrows(base_data, mode_nodes)]
+    #[covariant]
+    current_mode: Option<CurrentMode<'this>>,
 }
 
 impl CalculatedData {
@@ -68,7 +69,7 @@ impl CalculatedData {
                     .map(|(k, x)| (*k, ItemStatus::new(x, item_nodes)))
                     .collect::<HashMap<_, _>>()
             },
-            in_the_moment_priorities_builder: |items_status, base_data, all_nodes| {
+            in_the_moment_priorities_builder: |items_status, base_data, all_nodes, all_modes| {
                 let now_sql = (*base_data.get_now()).into();
                 let all_items = base_data.get_items();
                 let time_spent_log = base_data.get_time_spent_log();
@@ -82,6 +83,7 @@ impl CalculatedData {
                             all_items,
                             all_nodes,
                             items_status,
+                            all_modes,
                             time_spent_log,
                         )
                     })
@@ -92,22 +94,28 @@ impl CalculatedData {
                 });
                 in_the_moment_priorities
             },
-            current_mode_builder: |base_data| {
-                let surreal_current_modes = base_data.get_surreal_current_modes();
-                assert!(surreal_current_modes.len() <= 1, "There should not be more than one current mode. In the future it would be great for this to be a silent error that just deletes the current mode and logs an error into an error log (that currently doesn't exist) clears it but for now this is an assert. Length is: {}", surreal_current_modes.len());
-                let surreal_current_mode = surreal_current_modes.first();
-                match surreal_current_mode {
-                    None => CurrentMode::default(),
-                    Some(surreal_current_mode) =>
-                        CurrentMode::new(surreal_current_mode)
-                }
-            },
             mode_nodes_builder: |base_data| {
                 let all_modes = base_data.get_modes();
                 all_modes.iter().map(|x| ModeNode::new(x, all_modes)).collect()
             },
+            current_mode_builder: |base_data, mode_nodes| {
+                let surreal_current_modes = base_data.get_surreal_current_modes();
+                assert!(surreal_current_modes.len() <= 1, "There should not be more than one current mode. In the future it would be great for this to be a silent error that just deletes the current mode and logs an error into an error log (that currently doesn't exist) clears it but for now this is an assert. Length is: {}", surreal_current_modes.len());
+                let surreal_current_mode = surreal_current_modes.first();
+                surreal_current_mode.map(|surreal_current_mode| {
+                        CurrentMode::new(surreal_current_mode, mode_nodes)
+                })
+            },
         }
         .build()
+    }
+
+    pub(crate) fn get_items(&self) -> &HashMap<&RecordId, Item> {
+        self.borrow_base_data().get_items()
+    }
+
+    pub(crate) fn get_active_items(&self) -> &[&Item] {
+        self.borrow_base_data().get_active_items()
     }
 
     pub(crate) fn get_items_status(&self) -> &HashMap<&RecordId, ItemStatus<'_>> {
@@ -126,7 +134,7 @@ impl CalculatedData {
         self.borrow_base_data().get_time_spent_log()
     }
 
-    pub(crate) fn get_current_mode(&self) -> &CurrentMode {
+    pub(crate) fn get_current_mode(&self) -> &Option<CurrentMode> {
         self.borrow_current_mode()
     }
 

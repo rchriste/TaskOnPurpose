@@ -3,7 +3,11 @@ use std::fmt::Display;
 use inquire::Select;
 use surrealdb::opt::RecordId;
 
-use crate::{base_data::item::Item, display::display_item::DisplayItem};
+use crate::{
+    base_data::item::Item, data_storage::surrealdb_layer::surreal_item::SurrealModeScope,
+    display::display_item::DisplayItem, menu::inquire::prompt_for_mode_scope,
+    node::mode_node::ModeNode,
+};
 
 #[derive(Debug)]
 pub(crate) enum HigherImportanceThan<'e> {
@@ -44,8 +48,9 @@ impl<'e> HigherImportanceThan<'e> {
 #[must_use]
 pub(crate) fn select_higher_importance_than_this(
     items: &[&Item<'_>],
+    all_modes: &[ModeNode<'_>],
     starting_position: Option<usize>,
-) -> Option<RecordId> {
+) -> Option<(SurrealModeScope, Option<RecordId>)> {
     let list = HigherImportanceThan::create_list(items);
     let starting_position = starting_position.unwrap_or(0);
     println!();
@@ -53,11 +58,13 @@ pub(crate) fn select_higher_importance_than_this(
         .with_starting_cursor(starting_position)
         .prompt()
         .unwrap();
-    match selected {
+    let higher_than_this = match selected {
         HigherImportanceThan::Item(display_item) => {
             let surreal_item = display_item.get_surreal_record_id();
             Some(surreal_item.clone())
         }
         HigherImportanceThan::PutAtTheBottom => None,
-    }
+    };
+    let mode_scope = prompt_for_mode_scope(all_modes, todo!());
+    Some((mode_scope, higher_than_this))
 }

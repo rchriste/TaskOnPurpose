@@ -79,11 +79,11 @@ pub(crate) async fn configure_modes(
     let mut mode_nodes = calculated_data.get_mode_nodes().iter().collect::<Vec<_>>();
     mode_nodes.sort_by(|a, b| {
         fn compare_chains(
-            mut a_parent_chain: Vec<&Mode<'_>>,
-            mut b_parent_chain: Vec<&Mode<'_>>,
+            mut a_self_parent_chain: Vec<&Mode<'_>>,
+            mut b_self_parent_chain: Vec<&Mode<'_>>,
         ) -> Ordering {
-            let a_parent_chain_last = a_parent_chain.last();
-            let b_parent_chain_last = b_parent_chain.last();
+            let a_parent_chain_last = a_self_parent_chain.last();
+            let b_parent_chain_last = b_self_parent_chain.last();
             match (a_parent_chain_last, b_parent_chain_last) {
                 (None, None) => Ordering::Equal,
                 (None, Some(_)) => Ordering::Less,
@@ -93,9 +93,9 @@ pub(crate) async fn configure_modes(
                         .get_name()
                         .cmp(b_parent_chain_last.get_name());
                     if let Ordering::Equal = ordering {
-                        a_parent_chain.pop();
-                        b_parent_chain.pop();
-                        compare_chains(a_parent_chain, b_parent_chain)
+                        a_self_parent_chain.pop();
+                        b_self_parent_chain.pop();
+                        compare_chains(a_self_parent_chain, b_self_parent_chain)
                     } else {
                         ordering
                     }
@@ -103,9 +103,9 @@ pub(crate) async fn configure_modes(
             }
         }
 
-        let a_parent_chain = a.create_parent_chain();
-        let b_parent_chain = b.create_parent_chain();
-        compare_chains(a_parent_chain, b_parent_chain)
+        let a_self_parent_chain = a.create_self_parent_chain();
+        let b_self_parent_chain = b.create_self_parent_chain();
+        compare_chains(a_self_parent_chain, b_self_parent_chain)
     });
 
     options.extend(mode_nodes.into_iter().map(ConfigureModesOptions::Mode));
@@ -119,11 +119,17 @@ pub(crate) async fn configure_modes(
             let name = inquire::Text::new("Enter the name of the new mode").prompt();
             match name {
                 Ok(name) => {
-                    let new_mode = NewModeBuilder::default().name(name).build().unwrap();
+                    let new_mode = NewModeBuilder::default().summary(name).build().unwrap();
+                    // In this menu we are only editing mode definitions, not changing the current mode,
+                    // so we don't need the newly created mode value. However, the data layer sends it
+                    // back over a oneshot channel and will panic if nobody is listening, so we create
+                    // a oneshot, pass the sender, and explicitly await and discard the result.
+                    let (sender, receiver) = tokio::sync::oneshot::channel();
                     send_to_data_storage_layer
-                        .send(DataLayerCommands::NewMode(new_mode))
+                        .send(DataLayerCommands::NewMode(new_mode, sender))
                         .await
                         .unwrap();
+                    let _ = receiver.await;
 
                     Box::pin(configure_modes(send_to_data_storage_layer)).await
                 }
@@ -152,14 +158,19 @@ pub(crate) async fn configure_modes(
                     match name {
                         Ok(name) => {
                             let new_mode = NewModeBuilder::default()
-                                .name(name)
-                                .parent(Some(parent.get_surreal_id().clone()))
+                                .summary(name)
+                                .parent_mode(Some(parent.get_surreal_id().clone()))
                                 .build()
                                 .unwrap();
+                            // As above, this path is configuring modes, not switching the current mode,
+                            // so we only need to listen on the oneshot to prevent the data layer from
+                            // panicking when it sends back the created mode.
+                            let (sender, receiver) = tokio::sync::oneshot::channel();
                             send_to_data_storage_layer
-                                .send(DataLayerCommands::NewMode(new_mode))
+                                .send(DataLayerCommands::NewMode(new_mode, sender))
                                 .await
                                 .unwrap();
+                            let _ = receiver.await;
 
                             Box::pin(configure_modes(send_to_data_storage_layer)).await
                         }
@@ -179,7 +190,7 @@ pub(crate) async fn configure_modes(
                     match name {
                         Ok(name) => {
                             send_to_data_storage_layer
-                                .send(DataLayerCommands::UpdateModeName(
+                                .send(DataLayerCommands::UpdateModeSummary(
                                     mode.get_surreal_id().clone(),
                                     name,
                                 ))

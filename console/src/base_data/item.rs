@@ -11,7 +11,7 @@ use crate::{
     calculated_data::parent_lookup::ParentLookup,
     data_storage::surrealdb_layer::surreal_item::{
         Responsibility, SurrealDependency, SurrealFrequency, SurrealItem, SurrealItemType,
-        SurrealMotivationKind, SurrealOrderedSubItem, SurrealReviewGuidance, SurrealUrgencyPlan,
+        SurrealModeScope, SurrealReviewGuidance, SurrealUrgencyPlan,
     },
 };
 
@@ -131,59 +131,24 @@ impl<'b> Item<'b> {
         self.get_item_type()
     }
 
-    pub(crate) fn is_type_goal(&self) -> bool {
-        matches!(self.get_item_type(), &SurrealItemType::Goal(..))
+    pub(crate) fn is_type_project(&self) -> bool {
+        matches!(self.get_item_type(), &SurrealItemType::Project)
     }
 
     pub(crate) fn is_type_motivation(&self) -> bool {
-        matches!(self.get_item_type(), &SurrealItemType::Motivation(..))
-    }
-
-    pub(crate) fn is_type_motivation_kind_not_set(&self) -> bool {
-        matches!(
-            self.get_item_type(),
-            &SurrealItemType::Motivation(SurrealMotivationKind::NotSet)
-        )
-    }
-
-    pub(crate) fn is_type_motivation_kind_core_or_neither(&self) -> bool {
-        matches!(
-            self.get_item_type(),
-            &SurrealItemType::Motivation(
-                SurrealMotivationKind::CoreWork | SurrealMotivationKind::DoesNotFitInCoreOrNonCore
-            )
-        )
+        matches!(self.get_item_type(), &SurrealItemType::Motivation)
     }
 
     pub(crate) fn is_type_motivation_kind_core(&self) -> bool {
-        matches!(
-            self.get_item_type(),
-            &SurrealItemType::Motivation(SurrealMotivationKind::CoreWork)
-        )
-    }
-
-    pub(crate) fn is_type_motivation_kind_non_core_or_neither(&self) -> bool {
-        matches!(
-            self.get_item_type(),
-            &SurrealItemType::Motivation(
-                SurrealMotivationKind::NonCoreWork
-                    | SurrealMotivationKind::DoesNotFitInCoreOrNonCore
-            )
-        )
+        todo!()
     }
 
     pub(crate) fn is_type_motivation_kind_non_core(&self) -> bool {
-        matches!(
-            self.get_item_type(),
-            &SurrealItemType::Motivation(SurrealMotivationKind::NonCoreWork)
-        )
+        todo!()
     }
 
     pub(crate) fn is_type_motivation_kind_neither(&self) -> bool {
-        matches!(
-            self.get_item_type(),
-            &SurrealItemType::Motivation(SurrealMotivationKind::DoesNotFitInCoreOrNonCore)
-        )
+        todo!()
     }
 
     pub(crate) fn is_responsibility_reactive(&self) -> bool {
@@ -246,11 +211,10 @@ impl<'s> Item<'s> {
     pub(crate) fn get_children(&'s self) -> Box<dyn Iterator<Item = &'s RecordId> + 's> {
         Box::new(
             self.surreal_item
-                .smaller_items_in_priority_order
+                .smaller_items_in_importance_order
                 .iter()
-                .map(|x| match x {
-                    SurrealOrderedSubItem::SubItem { surreal_item_id } => surreal_item_id,
-                }),
+                .map(|importance| &importance.child_item)
+                .chain(self.surreal_item.smaller_items_not_important.iter()),
         )
     }
 
@@ -266,8 +230,29 @@ impl<'s> Item<'s> {
                 } else {
                     None
                 }
-            })
+            })   
             .collect()
+    }
+
+    /// None mean it is not in scope, Some(None) means it is in scope but not important, Some(Some) means it is in scope and important
+    pub(crate) fn is_this_a_smaller_item_get_scope<'a>(
+        &'a self,
+        other_item: &Item,
+    ) -> Option<Option<&'a SurrealModeScope>> {
+        self.surreal_item
+            .smaller_items_in_importance_order
+            .iter()
+            .find(|x| other_item.id == &x.child_item)
+            .map_or_else(
+                || {
+                    self.surreal_item
+                        .smaller_items_not_important
+                        .iter()
+                        .find(|x| *x == other_item.id)
+                        .map(|_| None)
+                },
+                |x| Some(Some(&x.scope)),
+            )
     }
 
     pub(crate) fn has_review_frequency(&self) -> bool {
@@ -368,7 +353,8 @@ impl<'s> Item<'s> {
 #[cfg(test)]
 mod tests {
     use crate::data_storage::surrealdb_layer::{
-        surreal_item::SurrealItemBuilder, surreal_tables::SurrealTablesBuilder,
+        surreal_item::{SurrealImportance, SurrealItemBuilder, SurrealModeScope},
+        surreal_tables::SurrealTablesBuilder,
     };
 
     use super::*;
@@ -376,13 +362,18 @@ mod tests {
     impl Item<'_> {
         pub(crate) fn has_active_children(&self, all_items: &HashMap<&RecordId, Item<'_>>) -> bool {
             self.surreal_item
-                .smaller_items_in_priority_order
+                .smaller_items_in_importance_order
                 .iter()
-                .any(|x| match x {
-                    SurrealOrderedSubItem::SubItem { surreal_item_id } => all_items
-                        .get(surreal_item_id)
-                        .is_some_and(|x| !x.is_finished()),
+                .any(|x| {
+                    all_items
+                        .get(&x.child_item)
+                        .is_some_and(|x| !x.is_finished())
                 })
+                || self
+                    .surreal_item
+                    .smaller_items_not_important
+                    .iter()
+                    .any(|x| all_items.get(x).is_some_and(|x| !x.is_finished()))
         }
     }
 
@@ -399,8 +390,9 @@ mod tests {
             .summary("Parent item")
             .finished(None)
             .item_type(SurrealItemType::Action)
-            .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                surreal_item_id: smaller_item.id.as_ref().expect("set above").clone(),
+            .smaller_items_in_importance_order(vec![SurrealImportance {
+                child_item: smaller_item.id.as_ref().expect("set above").clone(),
+                scope: SurrealModeScope::AllModes,
             }])
             .build()
             .unwrap();
@@ -437,8 +429,9 @@ mod tests {
             .id(Some(("surreal_item", "2").into()))
             .summary("Parent item")
             .item_type(SurrealItemType::Action)
-            .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                surreal_item_id: smaller_item.id.as_ref().expect("set above").clone(),
+            .smaller_items_in_importance_order(vec![SurrealImportance {
+                child_item: smaller_item.id.as_ref().expect("set above").clone(),
+                scope: SurrealModeScope::AllModes,
             }])
             .build()
             .unwrap();

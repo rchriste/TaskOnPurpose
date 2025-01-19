@@ -13,10 +13,11 @@ pub(crate) struct DisplayModeNode<'s> {
 
 impl Display for DisplayModeNode<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let parents = self.mode_node.create_parent_chain();
+        let parents = self.mode_node.create_self_parent_chain();
         match self.display_format {
             DisplayFormat::MultiLineTree => {
-                for (j, mode) in parents.iter().enumerate() {
+                write!(f, "{}", DisplayMode::new(self.mode_node.get_mode()))?;
+                for (j, mode) in parents.iter().skip(1).enumerate() {
                     let depth = &j;
                     writeln!(f)?;
                     for i in 0..*depth {

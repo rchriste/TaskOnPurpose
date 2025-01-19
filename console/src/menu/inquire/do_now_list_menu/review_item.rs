@@ -11,7 +11,7 @@ use crate::{
     base_data::{BaseData, item::Item},
     calculated_data::CalculatedData,
     data_storage::surrealdb_layer::{
-        data_layer_commands::DataLayerCommands, surreal_tables::SurrealTables,
+        data_layer_commands::DataLayerCommands, surreal_tables::SurrealTables
     },
     display::{
         display_dependencies_with_item_node::DisplayDependenciesWithItemNode,
@@ -30,6 +30,7 @@ use crate::{
         Filter,
         item_node::ItemNode,
         item_status::{DependencyWithItemNode, ItemStatus},
+        mode_node::ModeNode,
     },
 };
 
@@ -126,13 +127,13 @@ impl ReviewItemMenuChoices<'_> {
 
         if current_item
             .get_item_node()
-            .get_parents(Filter::Active)
+            .get_immediate_parents(Filter::Active)
             .count()
             == 1
         {
             let parent = current_item
                 .get_item_node()
-                .get_parents(Filter::Active)
+                .get_immediate_parents(Filter::Active)
                 .next()
                 .expect("Item is for sure there because count is 1")
                 .get_item();
@@ -141,7 +142,10 @@ impl ReviewItemMenuChoices<'_> {
             );
         } else {
             //Note that if there is no parent then we don't show this option and that is by design
-            for parent in current_item.get_item_node().get_parents(Filter::Active) {
+            for parent in current_item
+                .get_item_node()
+                .get_immediate_parents(Filter::Active)
+            {
                 list.push(ReviewItemMenuChoices::UpdateRelativeImportanceShowParent {
                     parent: parent.get_item(),
                 });
@@ -153,11 +157,17 @@ impl ReviewItemMenuChoices<'_> {
         list.push(ReviewItemMenuChoices::FinishThisItem);
         list.push(ReviewItemMenuChoices::AddNewParent);
 
-        for parent in current_item.get_item_node().get_parents(Filter::Active) {
+        for parent in current_item
+            .get_item_node()
+            .get_immediate_parents(Filter::Active)
+        {
             list.push(ReviewItemMenuChoices::GoToParent(parent.get_item()));
         }
 
-        for parent in current_item.get_item_node().get_parents(Filter::Active) {
+        for parent in current_item
+            .get_item_node()
+            .get_immediate_parents(Filter::Active)
+        {
             list.push(ReviewItemMenuChoices::RemoveParent(parent.get_item()));
         }
 
@@ -178,14 +188,14 @@ impl ReviewItemMenuChoices<'_> {
 pub(crate) async fn present_review_item_menu(
     item_status: &ItemStatus<'_>,
     all_items: &HashMap<&RecordId, ItemStatus<'_>>,
-    base_data: &BaseData,
+    calculated_data: &CalculatedData,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     present_review_item_menu_internal(
         item_status,
         item_status,
         all_items,
-        base_data,
+        calculated_data,
         send_to_data_storage_layer,
     )
     .await?;
@@ -217,7 +227,7 @@ async fn refresh_items_present_review_item_menu_internal(
         updated_item_under_review,
         updated_selected_item,
         updated_all_items,
-        updated_calculated_data.get_base_data(),
+        &updated_calculated_data,
         send_to_data_storage_layer,
     ))
     .await
@@ -227,7 +237,7 @@ async fn present_review_item_menu_internal<'a>(
     item_under_review: &ItemStatus<'a>,
     selected_item: &ItemStatus<'a>,
     all_items: &'a HashMap<&'a RecordId, ItemStatus<'a>>,
-    base_data: &BaseData,
+    calculated_data: &CalculatedData,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     let choices = ReviewItemMenuChoices::make_list(selected_item);
@@ -257,6 +267,7 @@ async fn present_review_item_menu_internal<'a>(
             update_relative_importance(
                 parent,
                 selected_item.get_item(),
+                calculated_data.get_mode_nodes(),
                 send_to_data_storage_layer,
             )
             .await
@@ -275,10 +286,13 @@ async fn present_review_item_menu_internal<'a>(
                 selected_item.get_item(),
                 "current_item exists twice so it can be used by display trait"
             );
-            let dependencies =
-                prompt_for_dependencies(Some(selected_item), base_data, send_to_data_storage_layer)
-                    .await
-                    .unwrap();
+            let dependencies = prompt_for_dependencies(
+                Some(selected_item),
+                calculated_data.get_base_data(),
+                send_to_data_storage_layer,
+            )
+            .await
+            .unwrap();
             for command in dependencies.into_iter() {
                 match command {
                     AddOrRemove::AddExisting(dependency) => {
@@ -320,7 +334,13 @@ async fn present_review_item_menu_internal<'a>(
         }
         ReviewItemMenuChoices::UpdateUrgencyPlan { current_item } => {
             let now = Utc::now();
-            let urgency_plan = prompt_for_urgency_plan(&now, send_to_data_storage_layer).await;
+            let urgency_plan = prompt_for_urgency_plan(
+                &now,
+                calculated_data.get_mode_nodes(),
+                todo!(),
+                send_to_data_storage_layer,
+            )
+            .await;
             send_to_data_storage_layer
                 .send(DataLayerCommands::UpdateUrgencyPlan(
                     current_item.get_surreal_record_id().clone(),
@@ -396,7 +416,7 @@ async fn present_review_item_menu_internal<'a>(
                 item_under_review,
                 parent,
                 all_items,
-                base_data,
+                calculated_data,
                 send_to_data_storage_layer,
             ))
             .await
@@ -425,7 +445,7 @@ async fn present_review_item_menu_internal<'a>(
                 item_under_review,
                 child,
                 all_items,
-                base_data,
+                calculated_data,
                 send_to_data_storage_layer,
             ))
             .await
@@ -452,6 +472,7 @@ async fn present_review_item_menu_internal<'a>(
 pub(crate) async fn update_relative_importance(
     parent: &ItemNode<'_>,
     item_to_move: &Item<'_>,
+    all_modes: &[ModeNode<'_>],
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     let (current_position, ..) = parent
@@ -465,7 +486,8 @@ pub(crate) async fn update_relative_importance(
         .map(|x| x.get_item())
         .filter(|x| *x != item_to_move)
         .collect::<Vec<_>>();
-    let higher_than = select_higher_importance_than_this(&priority_list, Some(current_position));
+    let higher_than =
+        select_higher_importance_than_this(&priority_list, all_modes, Some(current_position));
     send_to_data_storage_layer
         .send(DataLayerCommands::UpdateRelativeImportance {
             parent: parent.get_surreal_record_id().clone(),

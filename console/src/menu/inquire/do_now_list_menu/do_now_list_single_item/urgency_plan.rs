@@ -1,3 +1,4 @@
+use ahash::HashSet;
 use chrono::{DateTime, Utc};
 use fundu::{CustomDurationParser, CustomTimeUnit, SaturatingInto, TimeUnit};
 use lazy_static::lazy_static;
@@ -21,11 +22,11 @@ use crate::{
             SelectAnItemSortingOrder, select_an_item,
         },
         parse_exact_or_relative_datetime, parse_exact_or_relative_datetime_help_string,
+        prompt_for_mode_scope,
     },
     new_event::{NewEvent, NewEventBuilder},
     node::{
-        Filter, Urgency,
-        item_status::{DependencyWithItemNode, ItemStatus},
+        Filter, Urgency, item_node::ItemNode, item_status::{DependencyWithItemNode, ItemStatus}, mode_node::ModeNode, why_in_scope_and_action_with_item_status::WhyInScope
     },
 };
 use inquire::{InquireError, Select, Text};
@@ -77,13 +78,28 @@ impl Display for ReadySelection {
 
 pub(crate) async fn prompt_for_dependencies_and_urgency_plan(
     currently_selected: Option<&ItemStatus<'_>>,
-    base_data: &BaseData,
+    calculated_data: &CalculatedData,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> (Vec<AddOrRemove>, SurrealUrgencyPlan) {
-    let ready =
-        prompt_for_dependencies(currently_selected, base_data, send_to_data_storage_layer).await;
+    let ready = prompt_for_dependencies(
+        currently_selected,
+        calculated_data.get_base_data(),
+        send_to_data_storage_layer,
+    )
+    .await;
     let now = Utc::now();
-    let urgency_plan = prompt_for_urgency_plan(&now, send_to_data_storage_layer).await;
+    let blank = Vec::default();
+    let head_parent_items = match currently_selected {
+        Some(currently_selected) => currently_selected.get_head_parent_items(),
+        None => blank,
+    };
+    let urgency_plan = prompt_for_urgency_plan(
+        &now,
+        calculated_data.get_mode_nodes(),
+        head_parent_items.as_slice(),
+        send_to_data_storage_layer,
+    )
+    .await;
     (ready.unwrap(), urgency_plan)
 }
 
@@ -308,10 +324,12 @@ pub(crate) async fn prompt_for_dependencies(
 
 pub(crate) async fn prompt_for_urgency_plan(
     now: &DateTime<Utc>,
+    all_modes: &[ModeNode<'_>],
+    head_parent_items: &[&ItemNode<'_>],
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> SurrealUrgencyPlan {
     println!("Initial Urgency");
-    let initial_urgency = prompt_for_urgency();
+    let initial_urgency = prompt_for_urgency(all_modes, head_parent_items);
 
     let urgency_plan = Select::new(
         "Does the urgency escalate?|",
@@ -329,7 +347,7 @@ pub(crate) async fn prompt_for_urgency_plan(
             let triggers = prompt_for_triggers(now, send_to_data_storage_layer).await;
 
             println!("Later Urgency");
-            let later_urgency = prompt_for_urgency();
+            let later_urgency = prompt_for_urgency(all_modes, head_parent_items);
 
             SurrealUrgencyPlan::WillEscalate {
                 initial: initial_urgency,
@@ -607,55 +625,43 @@ async fn prompt_for_items_to_select(calculated_data: &CalculatedData) -> Vec<&It
 impl Display for Urgency {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Urgency::MoreUrgentThanAnythingIncludingScheduled => {
-                write!(f, "🚨  More urgent than anything including scheduled")
+            Urgency::Crises => {
+                write!(f, "🔥 Crises urgency")
             }
-            Urgency::ScheduledAnyMode => {
-                write!(f, "🗓️❗Schedule, to do, no matter your mode")
+            Urgency::Scheduled => write!(f, "🗓️ Scheduled"),
+            Urgency::DefinitelyUrgent => {
+                write!(f, "🔴 Definitely urgent")
             }
-            Urgency::MoreUrgentThanMode => {
-                write!(f, "🔥  More urgent than your mode")
-            }
-            Urgency::InTheModeScheduled => write!(f, "🗓️⭳ When in the mode, scheduled"),
-            Urgency::InTheModeDefinitelyUrgent => {
-                write!(f, "🔴  When in the mode, definitely urgent")
-            }
-            Urgency::InTheModeMaybeUrgent => write!(f, "🟡  When in the mode, maybe urgent"),
-            Urgency::InTheModeByImportance => write!(f, "🟢  Not immediately urgent"),
+            Urgency::MaybeUrgent => write!(f, "🟡 Maybe urgent"),
+            Urgency::NotUrgent => write!(f, "🟢 Not urgent"),
         }
     }
 }
 
-fn prompt_for_urgency() -> SurrealUrgency {
+fn prompt_for_urgency(all_modes: &[ModeNode<'_>], head_parent_items: &[&ItemNode<'_>]) -> Option<SurrealUrgency> {
     let urgency = Select::new(
         "Select immediate urgency|",
         vec![
-            Urgency::MoreUrgentThanAnythingIncludingScheduled,
-            Urgency::ScheduledAnyMode,
-            Urgency::MoreUrgentThanMode,
-            Urgency::InTheModeScheduled,
-            Urgency::InTheModeDefinitelyUrgent,
-            Urgency::InTheModeMaybeUrgent,
-            Urgency::InTheModeByImportance,
+            Urgency::Crises,
+            Urgency::Scheduled,
+            Urgency::DefinitelyUrgent,
+            Urgency::MaybeUrgent,
+            Urgency::NotUrgent,
         ],
     )
-    .with_starting_cursor(6)
+    .with_starting_cursor(4)
     .prompt()
     .unwrap();
+    let mode = prompt_for_mode_scope(all_modes, head_parent_items);
     match urgency {
-        Urgency::MoreUrgentThanAnythingIncludingScheduled => {
-            SurrealUrgency::MoreUrgentThanAnythingIncludingScheduled
-        }
-        Urgency::ScheduledAnyMode => {
-            SurrealUrgency::ScheduledAnyMode(prompt_to_schedule().unwrap().unwrap())
-        }
-        Urgency::MoreUrgentThanMode => SurrealUrgency::MoreUrgentThanMode,
-        Urgency::InTheModeScheduled => {
-            SurrealUrgency::InTheModeScheduled(prompt_to_schedule().unwrap().unwrap())
-        }
-        Urgency::InTheModeDefinitelyUrgent => SurrealUrgency::InTheModeDefinitelyUrgent,
-        Urgency::InTheModeMaybeUrgent => SurrealUrgency::InTheModeMaybeUrgent,
-        Urgency::InTheModeByImportance => SurrealUrgency::InTheModeByImportance,
+        Urgency::Crises => Some(SurrealUrgency::CrisesUrgent(mode)),
+        Urgency::Scheduled => Some(SurrealUrgency::Scheduled(
+            mode,
+            prompt_to_schedule().unwrap().unwrap(),
+        )),
+        Urgency::DefinitelyUrgent => Some(SurrealUrgency::DefinitelyUrgent(mode)),
+        Urgency::MaybeUrgent => Some(SurrealUrgency::MaybeUrgent(mode)),
+        Urgency::NotUrgent => None,
     }
 }
 
@@ -801,12 +807,14 @@ fn prompt_to_schedule() -> Result<Option<SurrealScheduled>, ()> {
 
 pub(crate) async fn present_set_ready_and_urgency_plan_menu(
     selected: &ItemStatus<'_>,
-    base_data: &BaseData,
+    why_in_scope: &HashSet<WhyInScope>,
+    current_urgency: Option<SurrealUrgency>,
+    calculated_data: &CalculatedData,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     let (dependencies, urgency_plan) = prompt_for_dependencies_and_urgency_plan(
         Some(selected),
-        base_data,
+        calculated_data,
         send_to_data_storage_layer,
     )
     .await;

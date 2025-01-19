@@ -30,43 +30,32 @@ impl Display for DisplayUrgencyLevelItemWithItemStatus<'_> {
                 //I'm drawing this in what looks like reverse order because the point is that if you select anything in the list then the lowest option is something that might be picked and this also makes the list when viewed from the do now list show the main priority first. And because anything can hold the top item that is shown last
                 if items
                     .iter()
-                    .any(|x| x.get_urgency_now() == SurrealUrgency::InTheModeMaybeUrgent)
+                    .any(|x| matches!(x.get_urgency_now(), Some(SurrealUrgency::MaybeUrgent(_))))
                 {
                     write!(f, "🟡")?;
                 }
 
                 if items
                     .iter()
-                    .any(|x| matches!(x.get_urgency_now(), SurrealUrgency::InTheModeScheduled(_)))
+                    .any(|x| matches!(x.get_urgency_now(), Some(SurrealUrgency::Scheduled(..))))
                 {
-                    write!(f, "🗓️⭳")?;
+                    write!(f, "🗓️")?;
                 }
 
-                if items
-                    .iter()
-                    .any(|x| x.get_urgency_now() == SurrealUrgency::InTheModeDefinitelyUrgent)
-                {
+                if items.iter().any(|x| {
+                    matches!(
+                        x.get_urgency_now(),
+                        Some(SurrealUrgency::DefinitelyUrgent(_))
+                    )
+                }) {
                     write!(f, "🔴")?;
                 }
 
                 if items
                     .iter()
-                    .any(|x| x.get_urgency_now() == SurrealUrgency::MoreUrgentThanMode)
+                    .any(|x| matches!(x.get_urgency_now(), Some(SurrealUrgency::CrisesUrgent(_))))
                 {
                     write!(f, "🔥")?;
-                }
-
-                if items
-                    .iter()
-                    .any(|x| matches!(x.get_urgency_now(), SurrealUrgency::ScheduledAnyMode(_)))
-                {
-                    write!(f, "🗓️❗")?;
-                }
-
-                if items.iter().any(|x| {
-                    x.get_urgency_now() == SurrealUrgency::MoreUrgentThanAnythingIncludingScheduled
-                }) {
-                    write!(f, "🚨")?;
                 }
 
                 if items.iter().any(|x| x.is_in_scope_for_importance()) {

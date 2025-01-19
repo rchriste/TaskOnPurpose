@@ -11,6 +11,7 @@ use crate::{
         action_with_item_status::ActionWithItemStatus,
         item_node::{ItemNode, TriggerWithItem},
         item_status::{ItemStatus, TriggerWithItemNode},
+        mode_node::ModeNode
     },
 };
 
@@ -31,6 +32,7 @@ impl<'s> InTheMomentPriorityWithItemAction<'s> {
         all_items: &'s HashMap<&'s RecordId, Item<'s>>,
         all_nodes: &'s HashMap<&'s RecordId, ItemNode<'s>>,
         items_status: &'s HashMap<&'s RecordId, ItemStatus<'s>>,
+        all_modes: &'s [ModeNode<'s>],
         time_spent_log: &[TimeSpent<'_>],
     ) -> InTheMomentPriorityWithItemAction<'s> {
         let in_effect_until = surreal_in_the_moment_priority
@@ -44,11 +46,14 @@ impl<'s> InTheMomentPriorityWithItemAction<'s> {
         let choice = ActionWithItemStatus::from_surreal_action(
             &surreal_in_the_moment_priority.choice,
             items_status,
+            all_modes,
         );
         let not_chosen = surreal_in_the_moment_priority
             .not_chosen
             .iter()
-            .map(|action| ActionWithItemStatus::from_surreal_action(action, items_status))
+            .map(|action| {
+                ActionWithItemStatus::from_surreal_action(action, items_status, all_modes)
+            })
             .collect();
         let created = surreal_in_the_moment_priority.created.clone().into();
 

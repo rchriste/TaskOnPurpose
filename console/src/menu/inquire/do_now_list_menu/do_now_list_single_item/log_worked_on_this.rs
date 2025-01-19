@@ -49,7 +49,7 @@ pub(crate) async fn log_worked_on_this(
             let time_spent = NewTimeSpent {
                 why_in_scope: why_in_scope.to_surreal(),
                 working_on,
-                urgency,
+                urgency: urgency.unwrap_or_default(),
                 when_started,
                 when_stopped,
                 dedication: Some(dedication),

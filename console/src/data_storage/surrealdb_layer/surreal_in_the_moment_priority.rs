@@ -30,6 +30,7 @@ pub(crate) enum SurrealAction {
     ItemNeedsAClassification(RecordId),
     PickItemReviewFrequency(RecordId),
     MakeProgress(RecordId),
+    StateIfInMode { item: RecordId, mode: RecordId },
 }
 
 impl SurrealAction {
@@ -41,6 +42,7 @@ impl SurrealAction {
             | SurrealAction::ItemNeedsAClassification(record_id)
             | SurrealAction::PickItemReviewFrequency(record_id)
             | SurrealAction::MakeProgress(record_id) => record_id,
+            SurrealAction::StateIfInMode { item, .. } => item,
         }
     }
 }

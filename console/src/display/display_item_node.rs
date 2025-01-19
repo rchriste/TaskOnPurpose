@@ -109,8 +109,8 @@ impl<'s> DisplayItemNode<'s> {
         self.item_node.is_type_motivation()
     }
 
-    pub(crate) fn is_type_goal(&self) -> bool {
-        self.item_node.is_type_goal()
+    pub(crate) fn is_type_project(&self) -> bool {
+        self.item_node.is_type_project()
     }
 
     pub(crate) fn get_type(&self) -> &SurrealItemType {

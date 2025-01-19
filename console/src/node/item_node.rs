@@ -13,8 +13,8 @@ use crate::{
     data_storage::surrealdb_layer::{
         SurrealItemsInScope, SurrealTrigger,
         surreal_item::{
-            SurrealDependency, SurrealItem, SurrealItemType, SurrealReviewGuidance,
-            SurrealScheduled, SurrealUrgency, SurrealUrgencyPlan,
+            SurrealDependency, SurrealItem, SurrealItemType, SurrealModeScope,
+            SurrealReviewGuidance, SurrealScheduled, SurrealUrgency, SurrealUrgencyPlan,
         },
     },
 };
@@ -24,7 +24,7 @@ use super::{Filter, GetUrgencyNow, IsActive, IsTriggered};
 #[derive(Clone, Debug, Eq)]
 pub(crate) struct ItemNode<'s> {
     item: &'s Item<'s>,
-    parents: Vec<GrowingItemNode<'s>>,
+    parents: Vec<GrowingItemNodeWithImportanceScope<'s>>,
     children: Vec<ShrinkingItemNode<'s>>,
     dependencies: Vec<DependencyWithItem<'s>>,
     urgency_plan: Option<UrgencyPlanWithItem<'s>>,
@@ -65,15 +65,15 @@ impl IsActive for DependencyWithItem<'_> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum UrgencyPlanWithItem<'e> {
     WillEscalate {
-        initial: SurrealUrgency,
+        initial: Option<SurrealUrgency>,
         triggers: Vec<TriggerWithItem<'e>>,
-        later: SurrealUrgency,
+        later: Option<SurrealUrgency>,
     },
-    StaysTheSame(SurrealUrgency),
+    StaysTheSame(Option<SurrealUrgency>),
 }
 
 impl GetUrgencyNow for UrgencyPlanWithItem<'_> {
-    fn get_urgency_now(&self) -> Option<&SurrealUrgency> {
+    fn get_urgency_now(&self) -> Option<&Option<SurrealUrgency>> {
         match self {
             UrgencyPlanWithItem::WillEscalate {
                 initial,
@@ -92,7 +92,7 @@ impl GetUrgencyNow for UrgencyPlanWithItem<'_> {
 }
 
 impl GetUrgencyNow for Option<UrgencyPlanWithItem<'_>> {
-    fn get_urgency_now(&self) -> Option<&SurrealUrgency> {
+    fn get_urgency_now(&self) -> Option<&Option<SurrealUrgency>> {
         self.as_ref().and_then(|x| x.get_urgency_now())
     }
 }
@@ -300,8 +300,8 @@ impl<'s> ItemNode<'s> {
 
     pub(crate) fn create_parent_chain(&'s self, filter: Filter) -> Vec<(u32, &'s Item<'s>)> {
         let mut result = Vec::default();
-        for i in self.get_parents(filter) {
-            result.push((1, i.item));
+        for i in self.get_immediate_parents(filter) {
+            result.push((1, i.get_item()));
             let parents = i.create_growing_parents(filter, 2);
             result.extend(parents.iter());
         }
@@ -335,45 +335,33 @@ impl<'s> ItemNode<'s> {
         has_parents(&self.parents, filter)
     }
 
-    pub(crate) fn get_parents(
+    pub(crate) fn get_immediate_parents(
         &'s self,
         filter: Filter,
-    ) -> Box<dyn Iterator<Item = &'s GrowingItemNode<'s>> + 's + Send> {
+    ) -> Box<dyn Iterator<Item = &'s GrowingItemNodeWithImportanceScope<'s>> + 's + Send> {
         match filter {
             Filter::All => Box::new(self.parents.iter()),
-            Filter::Active => Box::new(self.parents.iter().filter(|x| !x.item.is_finished())),
-            Filter::Finished => Box::new(self.parents.iter().filter(|x| x.item.is_finished())),
+            Filter::Active => Box::new(self.parents.iter().filter(|x| !x.is_finished())),
+            Filter::Finished => Box::new(self.parents.iter().filter(|x| x.is_finished())),
         }
     }
 
     /// Get's larger items and all of their parents and the current item
     pub(crate) fn get_self_and_parents(&'s self, filter: Filter) -> Vec<&'s Item<'s>> {
         let mut items = Vec::default();
-        for item in self.get_parents(filter) {
+        for item in self.get_immediate_parents(filter) {
             items = item.get_self_and_parents(items);
         }
         items.push(self.item);
         items
     }
 
-    pub(crate) fn is_core_work_or_neither(&self, filter: Filter) -> bool {
-        self.get_self_and_parents(filter)
-            .iter()
-            .any(|x| x.is_type_motivation_kind_core_or_neither())
-    }
-
-    pub(crate) fn is_non_core_work_or_neither(&self, filter: Filter) -> bool {
-        self.get_self_and_parents(filter)
-            .iter()
-            .any(|x| x.is_type_motivation_kind_non_core_or_neither())
-    }
-
     pub(crate) fn get_type(&self) -> &SurrealItemType {
         self.item.get_type()
     }
 
-    pub(crate) fn is_type_goal(&self) -> bool {
-        self.item.is_type_goal()
+    pub(crate) fn is_type_project(&self) -> bool {
+        self.item.is_type_project()
     }
 
     pub(crate) fn is_type_motivation(&self) -> bool {
@@ -416,7 +404,7 @@ impl<'s> ItemNode<'s> {
         self.urgency_plan.get_scheduled_now()
     }
 
-    pub(crate) fn get_urgency_now(&self) -> Option<&SurrealUrgency> {
+    pub(crate) fn get_urgency_now(&self) -> Option<&Option<SurrealUrgency>> {
         self.urgency_plan.get_urgency_now()
     }
 
@@ -449,9 +437,49 @@ impl<'s> ItemNode<'s> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct GrowingItemNodeWithImportanceScope<'s> {
+    importance_scope: Option<&'s SurrealModeScope>,
+    parent: GrowingItemNode<'s>,
+}
+
+impl<'s> GrowingItemNodeWithImportanceScope<'s> {
+    pub(crate) fn get_item(&self) -> &Item {
+        self.parent.get_item()
+    }
+
+    pub(crate) fn is_finished(&self) -> bool {
+        self.parent.is_finished()
+    }
+
+    pub(crate) fn get_importance_scope(&self) -> Option<&SurrealModeScope> {
+        self.importance_scope
+    }
+
+    pub(crate) fn get_surreal_record_id(&self) -> &Thing {
+        self.parent.get_surreal_record_id()
+    }
+
+    pub(crate) fn get_self_and_parents(&self, items: Vec<&'s Item<'s>>) -> Vec<&'s Item<'s>> {
+        self.parent.get_self_and_parents(items)
+    }
+
+    pub(crate) fn create_growing_parents(
+        &'s self,
+        filter: Filter,
+        levels_deep: u32,
+    ) -> Vec<(u32, &'s Item<'s>)> {
+        self.parent.create_growing_parents(filter, levels_deep)
+    }
+
+    pub(crate) fn get_surreal_review_guidance(&self) -> &Option<SurrealReviewGuidance> {
+        self.parent.get_surreal_review_guidance()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct GrowingItemNode<'s> {
     pub(crate) item: &'s Item<'s>,
-    pub(crate) larger: Vec<GrowingItemNode<'s>>,
+    pub(crate) larger: Vec<GrowingItemNodeWithImportanceScope<'s>>,
 }
 
 impl<'s> GrowingItemNode<'s> {
@@ -462,7 +490,7 @@ impl<'s> GrowingItemNode<'s> {
     ) -> Vec<(u32, &'s Item<'s>)> {
         let mut result = Vec::default();
         for i in self.get_parents(filter) {
-            result.push((levels_deep, i.item));
+            result.push((levels_deep, i.get_item()));
             let parents = i.create_growing_parents(filter, levels_deep + 1);
             result.extend(parents.iter());
         }
@@ -472,11 +500,11 @@ impl<'s> GrowingItemNode<'s> {
     pub(crate) fn get_parents(
         &'s self,
         filter: Filter,
-    ) -> Box<dyn Iterator<Item = &'s GrowingItemNode<'s>> + 's + Send> {
+    ) -> Box<dyn Iterator<Item = &'s GrowingItemNodeWithImportanceScope<'s>> + 's + Send> {
         match filter {
             Filter::All => Box::new(self.larger.iter()),
-            Filter::Active => Box::new(self.larger.iter().filter(|x| !x.item.is_finished())),
-            Filter::Finished => Box::new(self.larger.iter().filter(|x| x.item.is_finished())),
+            Filter::Active => Box::new(self.larger.iter().filter(|x| !x.is_finished())),
+            Filter::Finished => Box::new(self.larger.iter().filter(|x| x.is_finished())),
         }
     }
 
@@ -494,6 +522,10 @@ impl<'s> GrowingItemNode<'s> {
         }
         items.push(self.item);
         items
+    }
+
+    pub(crate) fn get_head_parent_nodes(&self) -> Vec<GrowingItemNode<'s>> {
+        todo!("Pattern after get_self_and_parents")
     }
 
     pub(crate) fn get_surreal_review_guidance(&self) -> &Option<SurrealReviewGuidance> {
@@ -528,6 +560,22 @@ impl ShouldChildrenHaveReviewFrequencySet for &[GrowingItemNode<'_>] {
     }
 }
 
+impl ShouldChildrenHaveReviewFrequencySet for &[GrowingItemNodeWithImportanceScope<'_>] {
+    fn should_children_have_review_frequency_set(
+        &self,
+        visited: Vec<&GrowingItemNode<'_>>,
+    ) -> bool {
+        if self.is_empty() {
+            true
+        } else {
+            self.iter().any(|x| match x.get_surreal_review_guidance() {
+                Some(_) => x.should_children_have_review_frequency_set(visited.clone()),
+                None => false,
+            })
+        }
+    }
+}
+
 impl ShouldChildrenHaveReviewFrequencySet for Vec<GrowingItemNode<'_>> {
     fn should_children_have_review_frequency_set(
         &self,
@@ -535,6 +583,25 @@ impl ShouldChildrenHaveReviewFrequencySet for Vec<GrowingItemNode<'_>> {
     ) -> bool {
         self.as_slice()
             .should_children_have_review_frequency_set(visited)
+    }
+}
+
+impl ShouldChildrenHaveReviewFrequencySet for Vec<GrowingItemNodeWithImportanceScope<'_>> {
+    fn should_children_have_review_frequency_set(
+        &self,
+        visited: Vec<&GrowingItemNode<'_>>,
+    ) -> bool {
+        self.as_slice()
+            .should_children_have_review_frequency_set(visited)
+    }
+}
+
+impl ShouldChildrenHaveReviewFrequencySet for GrowingItemNodeWithImportanceScope<'_> {
+    fn should_children_have_review_frequency_set<'a>(
+        &'a self,
+        visited: Vec<&'a GrowingItemNode<'a>>,
+    ) -> bool {
+        (&self.parent).should_children_have_review_frequency_set(visited)
     }
 }
 
@@ -563,14 +630,14 @@ pub(crate) fn create_growing_nodes<'a>(
     items: Vec<&'a Item<'a>>,
     parent_lookup: &'a ParentLookup<'a>,
     visited: &Visited<'a, '_>,
-) -> Vec<GrowingItemNode<'a>> {
+) -> Vec<GrowingItemNodeWithImportanceScope<'a>> {
     items
         .iter()
-        .filter_map(|x| {
-            if !visited.contains(x.get_surreal_record_id()) {
-                //TODO: Add a unit test for this circular reference in smaller and bigger
-                let visited = Visited::new(x.get_surreal_record_id(), Some(visited));
-                Some(create_growing_node(x, parent_lookup, &visited))
+        .filter_map(|item| {
+            if !visited.contains(item.get_surreal_record_id()) {
+                // TODO: Add a unit test for this circular reference in smaller and bigger
+                let visited = Visited::new(item.get_surreal_record_id(), Some(visited));
+                Some(create_growing_node(item, parent_lookup, &visited))
             } else {
                 None
             }
@@ -582,10 +649,13 @@ pub(crate) fn create_growing_node<'a>(
     item: &'a Item<'a>,
     parent_lookup: &'a ParentLookup<'a>,
     visited: &Visited<'a, '_>,
-) -> GrowingItemNode<'a> {
+) -> GrowingItemNodeWithImportanceScope<'a> {
     let parents = item.find_parents(parent_lookup, visited);
     let larger = create_growing_nodes(parents, parent_lookup, visited);
-    GrowingItemNode { item, larger }
+    GrowingItemNodeWithImportanceScope {
+        importance_scope: None,
+        parent: GrowingItemNode { item, larger },
+    }
 }
 
 fn calculate_dependencies<'a>(
@@ -756,11 +826,11 @@ pub(crate) fn create_shrinking_node<'a>(
     ShrinkingItemNode { item, smaller }
 }
 
-fn has_parents(parents: &[GrowingItemNode<'_>], filter: Filter) -> bool {
+fn has_parents(parents: &[GrowingItemNodeWithImportanceScope<'_>], filter: Filter) -> bool {
     match filter {
         Filter::All => !parents.is_empty(),
-        Filter::Active => parents.iter().any(|x| !x.item.is_finished()),
-        Filter::Finished => parents.iter().any(|x| x.item.is_finished()),
+        Filter::Active => parents.iter().any(|x| !x.is_finished()),
+        Filter::Finished => parents.iter().any(|x| x.is_finished()),
     }
 }
 
@@ -789,7 +859,7 @@ fn has_dependencies(dependencies: &[DependencyWithItem], filter: Filter) -> bool
 
 fn calculate_urgent_action_items<'a>(
     item: &'a Item,
-    parents: &[GrowingItemNode],
+    parents: &[GrowingItemNodeWithImportanceScope<'_>],
     children: &[ShrinkingItemNode],
     urgency_plan: &Option<UrgencyPlanWithItem<'_>>,
     dependencies: &[DependencyWithItem],
@@ -798,10 +868,8 @@ fn calculate_urgent_action_items<'a>(
     //Does it need a parent?
     if !has_parents(parents, Filter::Active) && !item.is_type_motivation() {
         result.push(ActionWithItem::ParentBackToAMotivation(item));
-    }
-
-    if item.is_type_motivation_kind_not_set() {
-        result.push(ActionWithItem::ItemNeedsAClassification(item));
+        //If it needs a parent then we don't want to create further actions because after this item gets a parent maybe they will be different so just return or exit this function
+        return result;
     }
 
     //Does it need to pick a review frequency?
@@ -817,16 +885,14 @@ fn calculate_urgent_action_items<'a>(
     }
 
     match urgency_plan.get_urgency_now() {
-        Some(SurrealUrgency::MoreUrgentThanAnythingIncludingScheduled)
-        | Some(SurrealUrgency::InTheModeMaybeUrgent)
-        | Some(SurrealUrgency::MoreUrgentThanMode)
-        | Some(SurrealUrgency::InTheModeDefinitelyUrgent) => {
+        Some(Some(SurrealUrgency::CrisesUrgent(mode)))
+        | Some(Some(SurrealUrgency::MaybeUrgent(mode)))
+        | Some(Some(SurrealUrgency::DefinitelyUrgent(mode))) => {
             if !has_dependencies(dependencies, Filter::Active) {
                 result.push(ActionWithItem::MakeProgress(item));
             }
         }
-        Some(SurrealUrgency::InTheModeScheduled(surreal_scheduled))
-        | Some(SurrealUrgency::ScheduledAnyMode(surreal_scheduled)) => {
+        Some(Some(SurrealUrgency::Scheduled(mode, surreal_scheduled))) => {
             if !has_dependencies(dependencies, Filter::Active) {
                 match surreal_scheduled {
                     SurrealScheduled::Exact { start, .. } => {
@@ -842,7 +908,7 @@ fn calculate_urgent_action_items<'a>(
                 }
             }
         }
-        Some(SurrealUrgency::InTheModeByImportance) => {
+        Some(None) => {
             //Do nothing, not urgent
         }
         None => {
@@ -865,7 +931,8 @@ mod tests {
         calculated_data::parent_lookup::ParentLookup,
         data_storage::surrealdb_layer::{
             surreal_item::{
-                SurrealDependency, SurrealItemBuilder, SurrealItemType, SurrealOrderedSubItem,
+                SurrealDependency, SurrealImportance, SurrealItemBuilder, SurrealItemType,
+                SurrealModeScope,
             },
             surreal_tables::SurrealTablesBuilder,
         },
@@ -880,8 +947,9 @@ mod tests {
                 .id(Some(("surreal_item", "1").into()))
                 .summary("Main Item that covers something else")
                 .item_type(SurrealItemType::Action)
-                .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: ("surreal_item", "3").into(),
+                .smaller_items_in_importance_order(vec![SurrealImportance {
+                    child_item: ("surreal_item", "3").into(),
+                    scope: SurrealModeScope::AllModes,
                 }])
                 .build()
                 .unwrap(),
@@ -889,8 +957,9 @@ mod tests {
                 .id(Some(("surreal_item", "2").into()))
                 .summary("Item that is covered by main item and the item this covers")
                 .item_type(SurrealItemType::Action)
-                .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: ("surreal_item", "1").into(),
+                .smaller_items_in_importance_order(vec![SurrealImportance {
+                    child_item: ("surreal_item", "1").into(),
+                    scope: SurrealModeScope::AllModes,
                 }])
                 .build()
                 .unwrap(),
@@ -898,8 +967,9 @@ mod tests {
                 .id(Some(("surreal_item", "3").into()))
                 .summary("Item that is covers the item it is covered by, circular reference")
                 .item_type(SurrealItemType::Action)
-                .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: ("surreal_item", "2").into(),
+                .smaller_items_in_importance_order(vec![SurrealImportance {
+                    child_item: ("surreal_item", "2").into(),
+                    scope: SurrealModeScope::AllModes,
                 }])
                 .build()
                 .unwrap(),

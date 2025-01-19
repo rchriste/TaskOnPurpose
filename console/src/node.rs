@@ -16,13 +16,11 @@ pub(crate) enum Filter {
 }
 
 pub(crate) enum Urgency {
-    MoreUrgentThanAnythingIncludingScheduled,
-    ScheduledAnyMode,
-    MoreUrgentThanMode,
-    InTheModeScheduled,
-    InTheModeDefinitelyUrgent,
-    InTheModeMaybeUrgent,
-    InTheModeByImportance,
+    Crises,
+    Scheduled,
+    DefinitelyUrgent,
+    MaybeUrgent,
+    NotUrgent,
 }
 
 pub(crate) trait IsTriggered {
@@ -40,16 +38,17 @@ pub(crate) trait GetUrgencyNow {
 
     fn get_scheduled_now(&self) -> Option<&SurrealScheduled> {
         match self.get_urgency_now() {
-            Some(SurrealUrgency::ScheduledAnyMode(scheduled))
-            | Some(SurrealUrgency::InTheModeScheduled(scheduled)) => Some(scheduled),
-            Some(SurrealUrgency::MoreUrgentThanAnythingIncludingScheduled)
-            | Some(SurrealUrgency::MoreUrgentThanMode)
-            | Some(SurrealUrgency::InTheModeDefinitelyUrgent)
-            | Some(SurrealUrgency::InTheModeMaybeUrgent)
-            | Some(SurrealUrgency::InTheModeByImportance)
-            | None => None,
+            Some(Some(SurrealUrgency::Scheduled(_, scheduled))) => Some(scheduled),
+            Some(Some(SurrealUrgency::CrisesUrgent(_)))
+            | Some(Some(SurrealUrgency::DefinitelyUrgent(_)))
+            | Some(Some(SurrealUrgency::MaybeUrgent(_)))
+            | None
+            | Some(None) => None,
         }
     }
 
-    fn get_urgency_now(&self) -> Option<&SurrealUrgency>;
+    /// The outside Option is for if the Urgency has been set. If None is returned then the user
+    /// has not set the urgency. The inside Option is for if there is urgency. If Some(None) is returned
+    /// that means that the user has explicitly set that there is no urgency.
+    fn get_urgency_now(&self) -> Option<&Option<SurrealUrgency>>;
 }

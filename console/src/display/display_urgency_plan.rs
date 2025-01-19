@@ -3,7 +3,9 @@ use std::fmt::{Display, Formatter};
 use chrono::{DateTime, Local, Utc};
 
 use crate::{
-    data_storage::surrealdb_layer::surreal_item::{SurrealScheduled, SurrealUrgency},
+    data_storage::surrealdb_layer::surreal_item::{
+        SurrealModeScope, SurrealScheduled, SurrealUrgency,
+    },
     display::display_duration_one_unit::DisplayDurationOneUnit,
     node::{
         Filter,
@@ -190,67 +192,81 @@ impl<'s> DisplayUrgencyPlan<'s> {
 }
 
 pub(crate) struct DisplayUrgency<'s> {
-    urgency: &'s SurrealUrgency,
+    urgency: &'s Option<SurrealUrgency>,
     style: DisplayStyle,
 }
 
 impl Display for DisplayUrgency<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.urgency {
-            SurrealUrgency::MoreUrgentThanAnythingIncludingScheduled => {
-                write!(f, "🚨")?;
+            Some(SurrealUrgency::CrisesUrgent(mode)) => {
+                write!(f, "🔥")?;
                 match self.style {
-                    DisplayStyle::Abbreviated => Ok(()),
+                    DisplayStyle::Abbreviated => match mode {
+                        SurrealModeScope::AllModes => write!(f, "(ALL MODES)"),
+                        SurrealModeScope::DefaultModesWithChanges {
+                            extra_modes_included,
+                        } => {
+                            if !extra_modes_included.is_empty() {
+                                write!(f, "(")?;
+                                for _ in extra_modes_included.iter() {
+                                    write!(f, "+")?;
+                                }
+                                write!(f, ")")
+                            } else {
+                                Ok(())
+                            }
+                        }
+                    },
                     DisplayStyle::Full => {
-                        write!(f, " More urgent than anything including scheduled")
+                        write!(f, " Crises urgency")?;
+                        match mode {
+                            SurrealModeScope::AllModes => write!(f, " (ALL MODES)"),
+                            SurrealModeScope::DefaultModesWithChanges {
+                                extra_modes_included,
+                            } => {
+                                if !extra_modes_included.is_empty() {
+                                    write!(f, " (")?;
+                                    for addition in extra_modes_included.iter() {
+                                        todo!("Print out the names of the modes");
+                                    }
+                                    write!(f, ")")
+                                } else {
+                                    Ok(())
+                                }
+                            }
+                        }
                     }
                 }
             }
-            SurrealUrgency::MoreUrgentThanMode => {
-                write!(f, "🔥")?;
-                match self.style {
-                    DisplayStyle::Abbreviated => Ok(()),
-                    DisplayStyle::Full => write!(f, " More urgent than a mode"),
-                }
-            }
-            SurrealUrgency::InTheModeByImportance => {
+            None => {
                 write!(f, "🟢")?;
                 match self.style {
                     DisplayStyle::Abbreviated => Ok(()),
-                    DisplayStyle::Full => write!(f, " When in the mode, by importance"),
+                    DisplayStyle::Full => write!(f, " Not urgent"),
                 }
             }
-            SurrealUrgency::InTheModeDefinitelyUrgent => {
+            Some(SurrealUrgency::DefinitelyUrgent(mode)) => {
                 write!(f, "🔴")?;
                 match self.style {
                     DisplayStyle::Abbreviated => Ok(()),
-                    DisplayStyle::Full => write!(f, " When in the mode, definitely urgent"),
+                    DisplayStyle::Full => write!(f, " Definitely urgent"),
                 }
             }
-            SurrealUrgency::InTheModeMaybeUrgent => {
+            Some(SurrealUrgency::MaybeUrgent(mode)) => {
                 write!(f, "🟡")?;
                 match self.style {
                     DisplayStyle::Abbreviated => Ok(()),
-                    DisplayStyle::Full => write!(f, " When in the mode, maybe urgent"),
+                    DisplayStyle::Full => write!(f, " Maybe urgent"),
                 }
             }
-            SurrealUrgency::ScheduledAnyMode(scheduled) => {
-                write!(f, "🗓️❗")?;
+            Some(SurrealUrgency::Scheduled(mode, scheduled)) => {
+                write!(f, "🗓️")?;
                 match self.style {
                     DisplayStyle::Abbreviated => Ok(()),
                     DisplayStyle::Full => {
                         let display_scheduled = DisplayScheduled::new(scheduled);
-                        write!(f, " Scheduled any mode: {}", display_scheduled)
-                    }
-                }
-            }
-            SurrealUrgency::InTheModeScheduled(scheduled) => {
-                write!(f, "🗓️⭳")?;
-                match self.style {
-                    DisplayStyle::Abbreviated => Ok(()),
-                    DisplayStyle::Full => {
-                        let display_scheduled = DisplayScheduled::new(scheduled);
-                        write!(f, " Scheduled when in the mode: {}", display_scheduled)
+                        write!(f, " Scheduled: {}", display_scheduled)
                     }
                 }
             }
@@ -259,7 +275,7 @@ impl Display for DisplayUrgency<'_> {
 }
 
 impl<'s> DisplayUrgency<'s> {
-    pub(crate) fn new(urgency: &'s SurrealUrgency, style: DisplayStyle) -> Self {
+    pub(crate) fn new(urgency: &'s Option<SurrealUrgency>, style: DisplayStyle) -> Self {
         Self { urgency, style }
     }
 }

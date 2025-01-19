@@ -5,7 +5,8 @@ use surrealdb::sql::Thing;
 
 use crate::{
     data_storage::surrealdb_layer::{
-        surreal_in_the_moment_priority::SurrealAction, surreal_item::SurrealUrgency,
+        surreal_in_the_moment_priority::SurrealAction,
+        surreal_item::{SurrealModeScope, SurrealUrgency},
     },
     display::display_action_with_item_status::DisplayActionWithItemStatus,
     node::{
@@ -32,13 +33,75 @@ impl Display for DisplayWhyInScopeAndActionWithItemStatus<'_> {
 
         let urgency = self.get_urgency_now();
         match urgency {
-            SurrealUrgency::MoreUrgentThanAnythingIncludingScheduled => write!(f, "🚨 ")?,
-            SurrealUrgency::MoreUrgentThanMode => write!(f, "🔥 ")?,
-            SurrealUrgency::InTheModeByImportance => {}
-            SurrealUrgency::InTheModeDefinitelyUrgent => write!(f, "🔴 ")?,
-            SurrealUrgency::InTheModeMaybeUrgent => write!(f, "🟡 ")?,
-            SurrealUrgency::ScheduledAnyMode(..) => write!(f, "🗓️❗ ")?,
-            SurrealUrgency::InTheModeScheduled(..) => write!(f, "🗓️⭳ ")?,
+            Some(SurrealUrgency::CrisesUrgent(mode)) => {
+                write!(f, "🔥 ")?;
+                match mode {
+                    SurrealModeScope::AllModes => write!(f, "(ALL MODES) ")?,
+                    SurrealModeScope::DefaultModesWithChanges {
+                        extra_modes_included,
+                    } => {
+                        if !extra_modes_included.is_empty() {
+                            write!(f, "(")?;
+                            for _ in extra_modes_included.iter() {
+                                write!(f, "+")?;
+                            }
+                            write!(f, ") ")?;
+                        }
+                    }
+                }
+            }
+            None => {}
+            Some(SurrealUrgency::DefinitelyUrgent(mode)) => {
+                write!(f, "🔴 ")?;
+                match mode {
+                    SurrealModeScope::AllModes => write!(f, "(ALL MODES) ")?,
+                    SurrealModeScope::DefaultModesWithChanges {
+                        extra_modes_included,
+                    } => {
+                        if !extra_modes_included.is_empty() {
+                            write!(f, "(")?;
+                            for _ in extra_modes_included.iter() {
+                                write!(f, "+")?;
+                            }
+                            write!(f, ") ")?;
+                        }
+                    }
+                }
+            }
+            Some(SurrealUrgency::MaybeUrgent(mode)) => {
+                write!(f, "🟡 ")?;
+                match mode {
+                    SurrealModeScope::AllModes => write!(f, "(ALL MODES) ")?,
+                    SurrealModeScope::DefaultModesWithChanges {
+                        extra_modes_included,
+                    } => {
+                        if !extra_modes_included.is_empty() {
+                            write!(f, "(")?;
+                            for _ in extra_modes_included.iter() {
+                                write!(f, "+")?;
+                            }
+                            write!(f, ") ")?;
+                        }
+                    }
+                }
+            }
+            Some(SurrealUrgency::Scheduled(mode, _)) => {
+                write!(f, "🗓️ ")?;
+                match mode {
+                    SurrealModeScope::AllModes => write!(f, "(ALL MODES) ")?,
+                    SurrealModeScope::DefaultModesWithChanges {
+                        extra_modes_included,
+                    } => {
+                        if !extra_modes_included.is_empty() {
+                            write!(f, "(")?;
+                            for _ in extra_modes_included.iter() {
+                                write!(f, "+")?;
+                            }
+                            write!(f, ") ")?;
+                        }
+                    }
+                }
+            }
         }
 
         write!(
@@ -62,7 +125,7 @@ impl<'s> DisplayWhyInScopeAndActionWithItemStatus<'s> {
         }
     }
 
-    pub(crate) fn get_urgency_now(&self) -> SurrealUrgency {
+    pub(crate) fn get_urgency_now(&self) -> Option<SurrealUrgency> {
         self.item.get_urgency_now()
     }
 

@@ -104,12 +104,16 @@ impl<'e> WhyInScopeAndActionWithItemStatus<'e> {
             .any(|x| x == &WhyInScope::Importance)
     }
 
-    pub(crate) fn get_urgency_now(&self) -> SurrealUrgency {
+    pub(crate) fn get_urgency_now(&self) -> Option<SurrealUrgency> {
         self.action.get_urgency_now()
     }
 
     pub(crate) fn get_action(&self) -> &ActionWithItemStatus<'e> {
         &self.action
+    }
+
+    pub(crate) fn get_item_node(&self) -> &ItemNode {
+        self.action.get_item_node()
     }
 
     pub(crate) fn extend_why_in_scope(&mut self, why_in_scope: &HashSet<WhyInScope>) {
@@ -126,9 +130,5 @@ impl<'e> WhyInScopeAndActionWithItemStatus<'e> {
 
     pub(crate) fn clone_to_surreal_action(&self) -> SurrealAction {
         self.action.clone_to_surreal_action()
-    }
-
-    pub(crate) fn get_item_node(&self) -> &ItemNode<'e> {
-        self.action.get_item_node()
     }
 }

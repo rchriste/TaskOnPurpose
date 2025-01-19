@@ -15,6 +15,7 @@ use crate::{
     },
     menu::inquire::do_now_list_menu::{
         classify_item::present_item_needs_a_classification_menu,
+        declare_scope_for_mode::present_state_if_in_mode_menu,
         do_now_list_single_item::{
             present_do_now_list_item_selected, present_is_person_or_group_around_menu,
             urgency_plan::present_set_ready_and_urgency_plan_menu,
@@ -142,11 +143,10 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
                     .await;
                 }
                 ActionWithItemStatus::ReviewItem(item_status) => {
-                    let base_data = do_now_list.get_base_data();
                     return present_review_item_menu(
                         item_status,
                         do_now_list.get_all_items_status(),
-                        base_data,
+                        do_now_list.get_calculated_data(),
                         send_to_data_storage_layer,
                     )
                     .await;
@@ -177,10 +177,12 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
                     .await;
                 }
                 ActionWithItemStatus::SetReadyAndUrgency(item_status) => {
-                    let base_data = do_now_list.get_base_data();
+                    let calculated_data = do_now_list.get_calculated_data();
                     return present_set_ready_and_urgency_plan_menu(
                         item_status,
-                        base_data,
+                        why_in_scope,
+                        item_action.get_urgency_now(),
+                        calculated_data,
                         send_to_data_storage_layer,
                     )
                     .await;
@@ -188,6 +190,14 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
                 ActionWithItemStatus::ParentBackToAMotivation(item_status) => {
                     return present_parent_back_to_a_motivation_menu(
                         item_status,
+                        send_to_data_storage_layer,
+                    )
+                    .await;
+                }
+                ActionWithItemStatus::StateIfInMode(item_status, current_mode) => {
+                    return present_state_if_in_mode_menu(
+                        item_status,
+                        current_mode,
                         send_to_data_storage_layer,
                     )
                     .await;

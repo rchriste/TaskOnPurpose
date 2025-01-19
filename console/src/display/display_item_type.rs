@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::data_storage::surrealdb_layer::surreal_item::{SurrealItemType, SurrealMotivationKind};
+use crate::data_storage::surrealdb_layer::surreal_item::SurrealItemType;
 
 use super::DisplayStyle;
 
@@ -12,39 +12,15 @@ pub(crate) struct DisplayItemType<'s> {
 impl Display for DisplayItemType<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.item_type {
-            SurrealItemType::Goal(_) => {
+            SurrealItemType::Project => {
                 write!(f, "🪧")?;
                 match self.style {
                     DisplayStyle::Abbreviated => Ok(()),
                     DisplayStyle::Full => write!(f, " Commitment or Project"),
                 }
             }
-            SurrealItemType::Motivation(kind) => {
+            SurrealItemType::Motivation => {
                 write!(f, "🎯")?;
-                match kind {
-                    SurrealMotivationKind::NotSet => {}
-                    SurrealMotivationKind::CoreWork => {
-                        write!(f, "🏢")?;
-                        match self.style {
-                            DisplayStyle::Abbreviated => {}
-                            DisplayStyle::Full => write!(f, " Core")?,
-                        }
-                    }
-                    SurrealMotivationKind::NonCoreWork => {
-                        write!(f, "🧹")?;
-                        match self.style {
-                            DisplayStyle::Abbreviated => {}
-                            DisplayStyle::Full => write!(f, " Non-Core")?,
-                        }
-                    }
-                    SurrealMotivationKind::DoesNotFitInCoreOrNonCore => {
-                        write!(f, "🚫")?;
-                        match self.style {
-                            DisplayStyle::Abbreviated => {}
-                            DisplayStyle::Full => write!(f, " Neither")?,
-                        }
-                    }
-                }
                 match self.style {
                     DisplayStyle::Abbreviated => Ok(()),
                     DisplayStyle::Full => write!(f, " Motivational Purpose"),

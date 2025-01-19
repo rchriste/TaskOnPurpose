@@ -1,93 +1,80 @@
 use crate::{
-    data_storage::surrealdb_layer::surreal_current_mode::{
-        SurrealCurrentMode, SurrealSelectedSingleMode,
+    base_data::mode::ModeCategory,
+    data_storage::surrealdb_layer::surreal_current_mode::SurrealCurrentMode,
+    node::{
+        item_node::ItemNode, mode_node::ModeNode,
+        why_in_scope_and_action_with_item_status::WhyInScopeAndActionWithItemStatus,
     },
-    node::{Filter, item_node::ItemNode},
 };
 
-pub(crate) struct CurrentMode {
-    urgency_in_scope: Vec<SelectedSingleMode>,
-    importance_in_scope: Vec<SelectedSingleMode>,
+pub(crate) struct CurrentMode<'s> {
+    mode: &'s ModeNode<'s>,
 }
 
-#[derive(PartialEq, Eq)]
-pub(crate) enum SelectedSingleMode {
-    AllCoreMotivationalPurposes,
-    AllNonCoreMotivationalPurposes,
+pub(crate) trait IsInTheMode<'t> {
+    fn get_category_by_importance(&self, item_node: &'t ItemNode) -> ModeCategory<'t>;
+    fn get_category_by_urgency(
+        &self,
+        item: &'t WhyInScopeAndActionWithItemStatus,
+    ) -> ModeCategory<'t>;
 }
 
-impl Default for CurrentMode {
-    fn default() -> Self {
-        //By default everything should be selected
-        CurrentMode {
-            urgency_in_scope: vec![
-                SelectedSingleMode::AllCoreMotivationalPurposes,
-                SelectedSingleMode::AllNonCoreMotivationalPurposes,
-            ],
-            importance_in_scope: vec![
-                SelectedSingleMode::AllCoreMotivationalPurposes,
-                SelectedSingleMode::AllNonCoreMotivationalPurposes,
-            ],
-        }
-    }
-}
-
-impl SurrealSelectedSingleMode {
-    pub(crate) fn copy_to_items_in_scope_with_item_nodes(&self) -> SelectedSingleMode {
+impl<'a> IsInTheMode<'a> for &Option<CurrentMode<'a>> {
+    fn get_category_by_importance(&self, item_node: &'a ItemNode) -> ModeCategory<'a> {
         match self {
-            SurrealSelectedSingleMode::AllCoreMotivationalPurposes => {
-                SelectedSingleMode::AllCoreMotivationalPurposes
-            }
-            SurrealSelectedSingleMode::AllNonCoreMotivationalPurposes => {
-                SelectedSingleMode::AllNonCoreMotivationalPurposes
-            }
+            Some(current_mode) => current_mode.get_category_by_importance(item_node),
+            None => ModeCategory::NonCore,
+        }
+    }
+
+    fn get_category_by_urgency(
+        &self,
+        item: &'a WhyInScopeAndActionWithItemStatus,
+    ) -> ModeCategory<'a> {
+        match self {
+            Some(current_mode) => current_mode.get_category_by_urgency(item),
+            None => ModeCategory::NonCore,
         }
     }
 }
 
-impl CurrentMode {
-    pub(crate) fn new(surreal_current_mode: &SurrealCurrentMode) -> CurrentMode {
-        let urgency_in_scope = surreal_current_mode
-            .urgency_in_scope
-            .iter()
-            .map(|urgency| urgency.copy_to_items_in_scope_with_item_nodes())
-            .collect::<Vec<_>>();
-        let importance_in_scope = surreal_current_mode
-            .importance_in_scope
-            .iter()
-            .map(|importance| importance.copy_to_items_in_scope_with_item_nodes())
-            .collect::<Vec<_>>();
-
-        CurrentMode {
-            urgency_in_scope,
-            importance_in_scope,
-        }
+impl<'a> IsInTheMode<'a> for CurrentMode<'a> {
+    fn get_category_by_importance(&self, item_node: &'a ItemNode<'a>) -> ModeCategory<'a> {
+        self.mode.get_category_by_importance(item_node)
     }
 
-    pub(crate) fn is_urgency_in_the_mode(&self, item_node: &ItemNode) -> bool {
-        is_in_scope(self.get_urgency_in_scope(), item_node)
-    }
-
-    pub(crate) fn is_importance_in_the_mode(&self, item_node: &ItemNode) -> bool {
-        is_in_scope(self.get_importance_in_scope(), item_node)
-    }
-
-    pub(crate) fn get_urgency_in_scope(&self) -> &Vec<SelectedSingleMode> {
-        &self.urgency_in_scope
-    }
-
-    pub(crate) fn get_importance_in_scope(&self) -> &Vec<SelectedSingleMode> {
-        &self.importance_in_scope
+    fn get_category_by_urgency(
+        &self,
+        item: &'a WhyInScopeAndActionWithItemStatus<'a>,
+    ) -> ModeCategory<'a> {
+        self.mode.get_category_by_urgency(item)
     }
 }
 
-fn is_in_scope(in_scope: &[SelectedSingleMode], item_node: &ItemNode) -> bool {
-    in_scope.iter().any(|x| match x {
-        SelectedSingleMode::AllCoreMotivationalPurposes => {
-            item_node.is_core_work_or_neither(Filter::Active)
-        }
-        SelectedSingleMode::AllNonCoreMotivationalPurposes => {
-            item_node.is_non_core_work_or_neither(Filter::Active)
-        }
-    })
+impl<'s> CurrentMode<'s> {
+    pub(crate) fn new(
+        surreal_current_mode: &SurrealCurrentMode,
+        mode_nodes: &'s [ModeNode<'s>],
+    ) -> Self {
+        let mode = mode_nodes
+            .iter()
+            .find(|mode| {
+                mode.get_surreal_id()
+                    == surreal_current_mode.mode.as_ref().expect("Mode must exist")
+            })
+            .expect("Mode must exist");
+
+        CurrentMode { mode }
+    }
+
+    pub(crate) fn get_mode(&self) -> &ModeNode {
+        self.mode
+    }
+
+    pub(crate) fn get_category_by_importance<'a>(
+        &self,
+        item: &'a ItemNode<'a>,
+    ) -> ModeCategory<'a> {
+        self.mode.get_category_by_importance(item)
+    }
 }
