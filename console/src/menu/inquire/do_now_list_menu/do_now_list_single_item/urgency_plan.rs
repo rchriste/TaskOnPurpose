@@ -26,7 +26,11 @@ use crate::{
     },
     new_event::{NewEvent, NewEventBuilder},
     node::{
-        Filter, Urgency, item_node::ItemNode, item_status::{DependencyWithItemNode, ItemStatus}, mode_node::ModeNode, why_in_scope_and_action_with_item_status::WhyInScope
+        Filter, Urgency,
+        item_node::ItemNode,
+        item_status::{DependencyWithItemNode, ItemStatus},
+        mode_node::ModeNode,
+        why_in_scope_and_action_with_item_status::{ToSurreal, WhyInScope},
     },
 };
 use inquire::{InquireError, Select, Text};
@@ -638,7 +642,10 @@ impl Display for Urgency {
     }
 }
 
-fn prompt_for_urgency(all_modes: &[ModeNode<'_>], head_parent_items: &[&ItemNode<'_>]) -> Option<SurrealUrgency> {
+fn prompt_for_urgency(
+    all_modes: &[ModeNode<'_>],
+    head_parent_items: &[&ItemNode<'_>],
+) -> Option<SurrealUrgency> {
     let urgency = Select::new(
         "Select immediate urgency|",
         vec![

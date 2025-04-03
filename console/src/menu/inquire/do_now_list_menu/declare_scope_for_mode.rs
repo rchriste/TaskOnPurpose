@@ -14,7 +14,7 @@ use crate::{
         display_item_node::DisplayFormat, display_item_status::DisplayItemStatus,
         display_mode_node::DisplayModeNode,
     },
-    node::{item_status::ItemStatus, mode_node::ModeNode, Filter},
+    node::{Filter, item_status::ItemStatus, mode_node::ModeNode},
 };
 
 enum InTheModeChoices {

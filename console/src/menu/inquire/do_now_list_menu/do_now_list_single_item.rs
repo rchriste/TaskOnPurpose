@@ -15,7 +15,7 @@ use tokio::sync::mpsc::Sender;
 use urgency_plan::present_set_ready_and_urgency_plan_menu;
 
 use crate::{
-    base_data::{item::Item, BaseData},
+    base_data::{BaseData, item::Item},
     calculated_data::{CalculatedData, parent_lookup::ParentLookup},
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands,
@@ -873,7 +873,7 @@ pub(crate) async fn parent_to_new_item(
                     //so just declare no parents so all modes are prompted to the user
                     let blank = Vec::default();
                     Some(prompt_for_mode_scope(all_modes, &blank))
-                },
+                }
                 HasImportance::No => None,
             };
             send_to_data_storage_layer

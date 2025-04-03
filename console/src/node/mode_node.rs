@@ -1,7 +1,10 @@
 use surrealdb::sql::Thing;
 
 use crate::{
-    base_data::mode::{Mode, ModeCategory},
+    base_data::{
+        item::Item,
+        mode::{Mode, ModeCategory},
+    },
     data_storage::surrealdb_layer::surreal_mode::SurrealMode,
 };
 

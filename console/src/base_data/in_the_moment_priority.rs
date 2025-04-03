@@ -11,7 +11,7 @@ use crate::{
         action_with_item_status::ActionWithItemStatus,
         item_node::{ItemNode, TriggerWithItem},
         item_status::{ItemStatus, TriggerWithItemNode},
-        mode_node::ModeNode
+        mode_node::ModeNode,
     },
 };
 

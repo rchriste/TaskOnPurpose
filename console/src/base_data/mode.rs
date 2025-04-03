@@ -6,8 +6,8 @@ use crate::{
         surreal_mode::SurrealMode,
     },
     node::{
-        item_node::ItemNode,
-        why_in_scope_and_action_with_item_status::WhyInScopeAndActionWithItemStatus, Filter,
+        Filter, item_node::ItemNode,
+        why_in_scope_and_action_with_item_status::WhyInScopeAndActionWithItemStatus,
     },
 };
 
@@ -98,19 +98,19 @@ impl<'s> Mode<'s> {
         item: &'a WhyInScopeAndActionWithItemStatus<'a>,
     ) -> ModeCategory<'a> {
         match item.get_urgency_now() {
-            Some(urgency) => {
-                match urgency {
-                    SurrealUrgency::CrisesUrgent(surreal_mode_scope) => todo!(),
-                    SurrealUrgency::Scheduled(surreal_mode_scope, surreal_scheduled) => todo!(),
-                    SurrealUrgency::DefinitelyUrgent(surreal_mode_scope) => {
-                        match surreal_mode_scope {
-                            SurrealModeScope::AllModes => ModeCategory::NonCore,
-                            SurrealModeScope::DefaultModesWithChanges { extra_modes_included } => todo!("Need to check default modes, and extra modes, and if extra_modes_included causes it to get pulled in"),
-                        }
-                    },
-                    SurrealUrgency::MaybeUrgent(surreal_mode_scope) => todo!(),
-                }
-            }
+            Some(urgency) => match urgency {
+                SurrealUrgency::CrisesUrgent(surreal_mode_scope) => todo!(),
+                SurrealUrgency::Scheduled(surreal_mode_scope, surreal_scheduled) => todo!(),
+                SurrealUrgency::DefinitelyUrgent(surreal_mode_scope) => match surreal_mode_scope {
+                    SurrealModeScope::AllModes => ModeCategory::NonCore,
+                    SurrealModeScope::DefaultModesWithChanges {
+                        extra_modes_included,
+                    } => todo!(
+                        "Need to check default modes, and extra modes, and if extra_modes_included causes it to get pulled in"
+                    ),
+                },
+                SurrealUrgency::MaybeUrgent(surreal_mode_scope) => todo!(),
+            },
             None => todo!("none"),
         }
     }
@@ -122,39 +122,38 @@ impl<'s> Mode<'s> {
         item: &'a ItemNode<'a>,
     ) -> ModeCategory<'a> {
         match item.get_urgency_now() {
-            Some(Some(urgency)) => {
-                match urgency {
-                    SurrealUrgency::CrisesUrgent(surreal_mode_scope) => todo!(),
-                    SurrealUrgency::Scheduled(surreal_mode_scope, surreal_scheduled) => todo!(),
-                    SurrealUrgency::DefinitelyUrgent(surreal_mode_scope) => {
-                        match surreal_mode_scope {
-                            SurrealModeScope::AllModes => ModeCategory::NonCore,
-                            SurrealModeScope::DefaultModesWithChanges { extra_modes_included } => todo!("Need to check default modes, and extra modes, and if extra_modes_included causes it to get pulled in"),
-                        }
-                    },
-                    SurrealUrgency::MaybeUrgent(surreal_mode_scope) => todo!(),
-                }
-            }
+            Some(Some(urgency)) => match urgency {
+                SurrealUrgency::CrisesUrgent(surreal_mode_scope) => todo!(),
+                SurrealUrgency::Scheduled(surreal_mode_scope, surreal_scheduled) => todo!(),
+                SurrealUrgency::DefinitelyUrgent(surreal_mode_scope) => match surreal_mode_scope {
+                    SurrealModeScope::AllModes => ModeCategory::NonCore,
+                    SurrealModeScope::DefaultModesWithChanges {
+                        extra_modes_included,
+                    } => todo!(
+                        "Need to check default modes, and extra modes, and if extra_modes_included causes it to get pulled in"
+                    ),
+                },
+                SurrealUrgency::MaybeUrgent(surreal_mode_scope) => todo!(),
+            },
             Some(None) => todo!("Some(None), probably the same as just None"),
             None => todo!("none"),
         }
     }
 
-
     pub(crate) fn is_in_scope_any(&self, items: &[&ItemNode<'_>]) -> bool {
-        items.iter().any(|x| 
-            match self.get_category_by_importance(x) {
+        items
+            .iter()
+            .any(|x| match self.get_category_by_importance(x) {
                 ModeCategory::Core => true,
                 ModeCategory::NonCore => true,
-                ModeCategory::OutOfScope |
-                ModeCategory::NotDeclared { .. } => match self.get_category_by_urgency_for_item_node(x) {
-                    ModeCategory::Core => true,
-                    ModeCategory::NonCore => true,
-                    ModeCategory::OutOfScope |
-                    ModeCategory::NotDeclared { .. } => false,
+                ModeCategory::OutOfScope | ModeCategory::NotDeclared { .. } => {
+                    match self.get_category_by_urgency_for_item_node(x) {
+                        ModeCategory::Core => true,
+                        ModeCategory::NonCore => true,
+                        ModeCategory::OutOfScope | ModeCategory::NotDeclared { .. } => false,
+                    }
                 }
-            }
-        )
+            })
     }
 }
 
@@ -178,7 +177,9 @@ impl<'a> SelectHighestModeCategory<'a> for Vec<ModeCategory<'a>> {
                 item_to_specify: item_to_specify,
             }
         } else {
-            panic!("This should not happen, because we are getting self and parents so there should always be a ModeCategory match")
+            panic!(
+                "This should not happen, because we are getting self and parents so there should always be a ModeCategory match"
+            )
         }
     }
 }

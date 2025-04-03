@@ -5,7 +5,7 @@ use inquire::{InquireError, Select};
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    base_data::{item::Item, BaseData},
+    base_data::{BaseData, item::Item},
     calculated_data::CalculatedData,
     calculated_data::parent_lookup::ParentLookup,
     data_storage::surrealdb_layer::{
@@ -13,11 +13,11 @@ use crate::{
     },
     display::display_item_node::DisplayItemNode,
     menu::inquire::{
-        do_now_list_menu::{do_now_list_single_item::ItemTypeSelection, HasImportance},
+        do_now_list_menu::{HasImportance, do_now_list_single_item::ItemTypeSelection},
         prompt_for_mode_scope,
         select_higher_importance_than_this::select_higher_importance_than_this,
     },
-    node::{item_node::ItemNode, mode_node::ModeNode, Filter},
+    node::{Filter, item_node::ItemNode, mode_node::ModeNode},
 };
 
 use super::DisplayFormat;
@@ -176,7 +176,7 @@ async fn parent_to_a_goal_or_motivation_new_goal_or_motivation(
                     let blank = Vec::default();
 
                     Some(prompt_for_mode_scope(all_modes, &blank))
-                },
+                }
                 HasImportance::No => None,
             };
             send_to_data_storage_layer

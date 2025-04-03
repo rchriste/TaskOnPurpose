@@ -266,15 +266,29 @@ impl<'s> ApplyInTheMomentPriorities<'s> for Vec<WhyInScopeAndActionWithItemStatu
         self,
         all_priorities: &'s [InTheMomentPriorityWithItemAction<'s>],
     ) -> Option<UrgencyLevelItemWithItemStatus<'s>> {
-        //We first want to apply auto selections before the user selected priority choices. 
+        //We first want to apply auto selections before the user selected priority choices.
         //Auto selections is where if there are multiple choices for the same item we present these choices to the user in a certain order.
         //For example picking a parent should happen before you declare if something is in scope for a mode
         let choices = self.clone();
-        let mut choices = choices.into_iter().filter(|x| if let ActionWithItemStatus::StateIfInMode(x_item_status, _ ) = x.get_action() {
-            !self.iter().any(|y| if let ActionWithItemStatus::ParentBackToAMotivation(y_item_status) = y.get_action() {
-                x_item_status.get_surreal_record_id() == y_item_status.get_surreal_record_id()
-            } else {true})
-        } else {true}).collect::<Vec<_>>();
+        let mut choices = choices
+            .into_iter()
+            .filter(|x| {
+                if let ActionWithItemStatus::StateIfInMode(x_item_status, _) = x.get_action() {
+                    !self.iter().any(|y| {
+                        if let ActionWithItemStatus::ParentBackToAMotivation(y_item_status) =
+                            y.get_action()
+                        {
+                            x_item_status.get_surreal_record_id()
+                                == y_item_status.get_surreal_record_id()
+                        } else {
+                            true
+                        }
+                    })
+                } else {
+                    true
+                }
+            })
+            .collect::<Vec<_>>();
 
         //Now apply the user selected in the moment priorities
         for priority in all_priorities.iter().filter(|x| x.is_active()) {

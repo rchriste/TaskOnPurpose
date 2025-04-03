@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter};
 
 use crate::{
     display::{display_item_status::DisplayItemStatus, display_mode::DisplayMode},
-    node::{action_with_item_status::ActionWithItemStatus, Filter},
+    node::{Filter, action_with_item_status::ActionWithItemStatus},
 };
 
 use super::display_item_node::DisplayFormat;

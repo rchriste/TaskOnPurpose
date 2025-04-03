@@ -226,7 +226,9 @@ pub(crate) async fn present_change_mode_menu(
             match selection {
                 Ok(DetailsMenu::ReturnToDoNowList) => Ok(()),
                 Ok(DetailsMenu::EditWhatIsInTheMode) => {
-                    todo!("Present the menu to edit what is in and out of the mode, core work, non-core work, and explicitly out of scope work")
+                    todo!(
+                        "Present the menu to edit what is in and out of the mode, core work, non-core work, and explicitly out of scope work"
+                    )
                 }
                 Ok(DetailsMenu::Rename) => {
                     let mode = Mode::new(&selected);

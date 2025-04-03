@@ -16,7 +16,7 @@ use change_mode::present_change_mode_menu;
 use chrono::{DateTime, Local, Utc};
 use classify_item::present_item_needs_a_classification_menu;
 use declare_scope_for_mode::present_state_if_in_mode_menu;
-use do_now_list_single_item::urgency_plan::present_set_ready_and_urgency_plan_menu;
+use do_now_list_single_item::{LogTime, urgency_plan::present_set_ready_and_urgency_plan_menu};
 use inquire::{InquireError, Select};
 use itertools::chain;
 use parent_back_to_a_motivation::present_parent_back_to_a_motivation_menu;
@@ -28,10 +28,11 @@ use surrealdb::opt::RecordId;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    base_data::{event::Event, BaseData},
+    base_data::{BaseData, event::Event},
     calculated_data::CalculatedData,
     data_storage::surrealdb_layer::{
-        data_layer_commands::DataLayerCommands, surreal_item::SurrealDependency, surreal_tables::SurrealTables
+        data_layer_commands::DataLayerCommands, surreal_item::SurrealDependency,
+        surreal_tables::SurrealTables,
     },
     display::{
         display_item::DisplayItem, display_item_node::DisplayFormat,
@@ -41,11 +42,13 @@ use crate::{
     },
     menu::inquire::back_menu::present_back_menu,
     node::{
-        action_with_item_status::ActionWithItemStatus, item_status::{DependencyWithItemNode, ItemStatus}, urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus, why_in_scope_and_action_with_item_status::{WhyInScope, WhyInScopeAndActionWithItemStatus}, Filter
+        Filter,
+        action_with_item_status::ActionWithItemStatus,
+        item_status::{DependencyWithItemNode, ItemStatus},
+        urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
+        why_in_scope_and_action_with_item_status::{WhyInScope, WhyInScopeAndActionWithItemStatus},
     },
-    systems::do_now_list::{
-        current_mode::CurrentMode, DoNowList
-    },
+    systems::do_now_list::{DoNowList, current_mode::CurrentMode},
 };
 
 use self::do_now_list_single_item::{
