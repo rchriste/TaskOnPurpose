@@ -94,7 +94,9 @@ pub(crate) async fn prompt_for_dependencies_and_urgency_plan(
     let now = Utc::now();
     let blank = Vec::default();
     let head_parent_items = match currently_selected {
-        Some(currently_selected) => currently_selected.get_head_parent_items(),
+        Some(currently_selected) => currently_selected
+            .get_head_parent_items(Filter::Active)
+            .collect::<Vec<_>>(),
         None => blank,
     };
     let urgency_plan = prompt_for_urgency_plan(

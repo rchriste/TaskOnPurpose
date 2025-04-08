@@ -30,8 +30,7 @@ use super::{
     },
     surreal_item::{
         Responsibility, SurrealDependency, SurrealFrequency, SurrealImportance, SurrealItem,
-        SurrealItemType, SurrealModeScope, SurrealReviewGuidance,
-        SurrealUrgencyPlan,
+        SurrealItemType, SurrealModeScope, SurrealReviewGuidance, SurrealUrgencyPlan,
     },
     surreal_mode::{self, SurrealScope},
     surreal_tables::SurrealTables,

@@ -399,8 +399,14 @@ impl<'s> ItemStatus<'s> {
         }
     }
 
-    pub(crate) fn get_head_parent_items(&'s self) -> Vec<&'s ItemNode<'s>> {
-        todo!()
+    pub(crate) fn get_head_parent_items(
+        &'s self,
+        filter: Filter,
+    ) -> Box<dyn Iterator<Item = &'s ItemNode<'s>> + 's> {
+        Box::new(
+            self.get_parents(filter)
+                .filter(move |x| !x.has_parents(filter)),
+        )
     }
 
     pub(crate) fn get_self_and_parents_flattened(&'s self, filter: Filter) -> Vec<&'s Item<'s>> {

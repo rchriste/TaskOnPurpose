@@ -524,10 +524,6 @@ impl<'s> GrowingItemNode<'s> {
         items
     }
 
-    pub(crate) fn get_head_parent_nodes(&self) -> Vec<GrowingItemNode<'s>> {
-        todo!("Pattern after get_self_and_parents")
-    }
-
     pub(crate) fn get_surreal_review_guidance(&self) -> &Option<SurrealReviewGuidance> {
         self.item.get_surreal_review_guidance()
     }

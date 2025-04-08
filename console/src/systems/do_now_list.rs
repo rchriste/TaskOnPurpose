@@ -6,7 +6,7 @@ use surrealdb::opt::RecordId;
 
 pub(crate) mod current_mode;
 use crate::{
-    base_data::{BaseData, event::Event, mode::ModeCategory, time_spent::TimeSpent},
+    base_data::{event::Event, mode::ModeCategory, time_spent::TimeSpent},
     calculated_data::CalculatedData,
     data_storage::surrealdb_layer::surreal_item::SurrealUrgency,
     node::{

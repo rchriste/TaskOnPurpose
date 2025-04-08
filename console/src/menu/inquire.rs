@@ -8,7 +8,6 @@ use chrono::{DateTime, Datelike, Duration, Local, NaiveTime, TimeZone};
 use regex::{Regex, RegexBuilder};
 
 use crate::{
-   
     data_storage::surrealdb_layer::surreal_item::SurrealModeScope,
     display::{display_item_node::DisplayFormat, display_mode_node::DisplayModeNode},
     node::{item_node::ItemNode, mode_node::ModeNode},
