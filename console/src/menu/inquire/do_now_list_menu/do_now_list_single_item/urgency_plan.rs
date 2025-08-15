@@ -253,7 +253,7 @@ pub(crate) async fn prompt_for_dependencies(
         }
         Ok(ReadySelection::AfterEvent) => {
             let events = base_data.get_events();
-            let mut events = events.iter().map(|(_, value)| value).collect::<Vec<_>>();
+            let mut events = events.values().collect::<Vec<_>>();
             events.sort_by(|a, b| b.get_last_updated().cmp(a.get_last_updated()));
             let list = chain!(
                 once(EventSelection::NewEvent),
@@ -570,7 +570,7 @@ impl Display for SelectAnother {
     }
 }
 
-async fn prompt_for_items_to_select(calculated_data: &CalculatedData) -> Vec<&ItemStatus> {
+async fn prompt_for_items_to_select(calculated_data: &CalculatedData) -> Vec<&ItemStatus<'_>> {
     let mut result: Vec<&ItemStatus> = Vec::default();
 
     loop {

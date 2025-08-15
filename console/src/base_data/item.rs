@@ -51,7 +51,7 @@ impl From<Item<'_>> for RecordId {
 pub(crate) trait ItemVecExtensions<'t> {
     type ItemIterator: Iterator<Item = &'t Item<'t>>;
 
-    fn filter_active_items(&self) -> Vec<&Item>;
+    fn filter_active_items(&self) -> Vec<&Item<'t>>;
 }
 
 impl<'s> ItemVecExtensions<'s> for HashMap<&RecordId, Item<'s>> {
@@ -60,7 +60,7 @@ impl<'s> ItemVecExtensions<'s> for HashMap<&RecordId, Item<'s>> {
         Box<dyn FnMut(&'s Item<'s>) -> Option<&'s Item<'s>>>,
     >;
 
-    fn filter_active_items(&self) -> Vec<&Item> {
+    fn filter_active_items(&self) -> Vec<&Item<'s>> {
         self.iter()
             .filter(|(_, x)| !x.is_finished())
             .map(|(_, v)| v)
@@ -74,7 +74,7 @@ impl<'s> ItemVecExtensions<'s> for HashMap<&RecordId, &Item<'s>> {
         Box<dyn FnMut(&'s &'s Item<'s>) -> Option<&'s Item<'s>>>,
     >;
 
-    fn filter_active_items(&self) -> Vec<&Item> {
+    fn filter_active_items(&self) -> Vec<&Item<'s>> {
         self.iter()
             .filter(|(_, x)| !x.is_finished())
             .map(|(_, v)| *v)

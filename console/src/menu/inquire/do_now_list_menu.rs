@@ -326,8 +326,7 @@ pub(crate) async fn present_do_now_list_menu(
                 Ok(EventSelection::Event(event)) => {
                     let items_waiting_on_this_event = do_now_list
                         .get_all_items_status()
-                        .iter()
-                        .map(|(_, item)| item)
+                        .values()
                         .filter(|x| {
                             x.get_dependencies(Filter::Active).any(|x| match x {
                                 DependencyWithItemNode::AfterEvent(event_waiting_on) => {

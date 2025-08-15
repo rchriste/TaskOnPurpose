@@ -68,19 +68,19 @@ impl BaseData {
         self.borrow_now()
     }
 
-    pub(crate) fn get_items(&self) -> &HashMap<&RecordId, Item> {
+    pub(crate) fn get_items(&self) -> &HashMap<&RecordId, Item<'_>> {
         self.borrow_items()
     }
 
-    pub(crate) fn get_active_items(&self) -> &[&Item] {
+    pub(crate) fn get_active_items(&self) -> &[&Item<'_>] {
         self.borrow_active_items()
     }
 
-    pub(crate) fn get_events(&self) -> &HashMap<&RecordId, Event> {
+    pub(crate) fn get_events(&self) -> &HashMap<&RecordId, Event<'_>> {
         self.borrow_events()
     }
 
-    pub(crate) fn get_time_spent_log(&self) -> &[TimeSpent] {
+    pub(crate) fn get_time_spent_log(&self) -> &[TimeSpent<'_>] {
         self.borrow_time_spent_log()
     }
 
@@ -93,7 +93,7 @@ impl BaseData {
         self.borrow_surreal_tables().get_surreal_current_modes()
     }
 
-    pub(crate) fn get_modes(&self) -> &[Mode] {
+    pub(crate) fn get_modes(&self) -> &[Mode<'_>] {
         self.borrow_modes()
     }
 }

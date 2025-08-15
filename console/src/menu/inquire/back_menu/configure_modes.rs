@@ -84,26 +84,21 @@ pub(crate) async fn configure_modes(
         ) -> Ordering {
             let a_parent_chain_last = a_parent_chain.last();
             let b_parent_chain_last = b_parent_chain.last();
-            if a_parent_chain_last.is_none() && b_parent_chain_last.is_none() {
-                Ordering::Equal
-            } else if a_parent_chain_last.is_none() {
-                Ordering::Less
-            } else if b_parent_chain_last.is_none() {
-                Ordering::Greater
-            } else {
-                let a_parent_chain_last =
-                    a_parent_chain_last.expect("Earlier if statement guarantees this is_some()");
-                let b_parent_chain_last =
-                    b_parent_chain_last.expect("Earlier if statement guarantees this is_some()");
-                let ordering = a_parent_chain_last
-                    .get_name()
-                    .cmp(b_parent_chain_last.get_name());
-                if let Ordering::Equal = ordering {
-                    a_parent_chain.pop();
-                    b_parent_chain.pop();
-                    compare_chains(a_parent_chain, b_parent_chain)
-                } else {
-                    ordering
+            match (a_parent_chain_last, b_parent_chain_last) {
+                (None, None) => Ordering::Equal,
+                (None, Some(_)) => Ordering::Less,
+                (Some(_), None) => Ordering::Greater,
+                (Some(a_parent_chain_last), Some(b_parent_chain_last)) => {
+                    let ordering = a_parent_chain_last
+                        .get_name()
+                        .cmp(b_parent_chain_last.get_name());
+                    if let Ordering::Equal = ordering {
+                        a_parent_chain.pop();
+                        b_parent_chain.pop();
+                        compare_chains(a_parent_chain, b_parent_chain)
+                    } else {
+                        ordering
+                    }
                 }
             }
         }

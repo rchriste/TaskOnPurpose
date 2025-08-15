@@ -128,7 +128,7 @@ impl<'e> WhyInScopeAndActionWithItemStatus<'e> {
         self.action.clone_to_surreal_action()
     }
 
-    pub(crate) fn get_item_node(&self) -> &ItemNode {
+    pub(crate) fn get_item_node(&self) -> &ItemNode<'e> {
         self.action.get_item_node()
     }
 }

@@ -570,8 +570,7 @@ pub(crate) async fn present_search_menu(
 
     let everything_that_has_no_parent = do_now_list
         .get_all_items_status()
-        .iter()
-        .map(|(_, x)| x)
+        .values()
         .filter(|x| !x.has_parents(Filter::Active) && x.is_active())
         .collect::<Vec<_>>();
 

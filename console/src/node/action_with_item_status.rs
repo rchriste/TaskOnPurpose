@@ -167,7 +167,7 @@ impl<'e> ActionWithItemStatus<'e> {
         }
     }
 
-    pub(crate) fn get_item_node(&self) -> &ItemNode {
+    pub(crate) fn get_item_node(&self) -> &ItemNode<'e> {
         match self {
             ActionWithItemStatus::SetReadyAndUrgency(item)
             | ActionWithItemStatus::ParentBackToAMotivation(item)
@@ -277,15 +277,13 @@ impl<'s> ApplyInTheMomentPriorities<'s> for Vec<WhyInScopeAndActionWithItemStatu
                 SurrealPriorityKind::LowestPriority => {
                     if let Some((position, _)) = choices.iter().find_position(|item_action| {
                         priority.get_choice() == item_action.get_action()
+                    }) && choices.iter().any(|item_action| {
+                        priority
+                            .get_not_chosen()
+                            .iter()
+                            .any(|lower_priority| item_action.get_action() == lower_priority)
                     }) {
-                        if choices.iter().any(|item_action| {
-                            priority
-                                .get_not_chosen()
-                                .iter()
-                                .any(|lower_priority| item_action.get_action() == lower_priority)
-                        }) {
-                            choices.swap_remove(position);
-                        }
+                        choices.swap_remove(position);
                     }
                 }
             }

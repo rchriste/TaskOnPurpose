@@ -110,11 +110,11 @@ impl CalculatedData {
         .build()
     }
 
-    pub(crate) fn get_items_status(&self) -> &HashMap<&RecordId, ItemStatus> {
+    pub(crate) fn get_items_status(&self) -> &HashMap<&RecordId, ItemStatus<'_>> {
         self.borrow_items_status()
     }
 
-    pub(crate) fn get_in_the_moment_priorities(&self) -> &[InTheMomentPriorityWithItemAction] {
+    pub(crate) fn get_in_the_moment_priorities(&self) -> &[InTheMomentPriorityWithItemAction<'_>] {
         self.borrow_in_the_moment_priorities()
     }
 
@@ -122,7 +122,7 @@ impl CalculatedData {
         self.borrow_base_data().get_now()
     }
 
-    pub(crate) fn get_time_spent_log(&self) -> &[TimeSpent] {
+    pub(crate) fn get_time_spent_log(&self) -> &[TimeSpent<'_>] {
         self.borrow_base_data().get_time_spent_log()
     }
 
@@ -130,11 +130,11 @@ impl CalculatedData {
         self.borrow_current_mode()
     }
 
-    pub(crate) fn get_mode_nodes(&self) -> &[ModeNode] {
+    pub(crate) fn get_mode_nodes(&self) -> &[ModeNode<'_>] {
         self.borrow_mode_nodes()
     }
 
-    pub(crate) fn get_events(&self) -> &HashMap<&RecordId, Event> {
+    pub(crate) fn get_events(&self) -> &HashMap<&RecordId, Event<'_>> {
         self.borrow_base_data().get_events()
     }
 

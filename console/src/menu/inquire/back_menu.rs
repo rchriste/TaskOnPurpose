@@ -203,8 +203,7 @@ async fn view_priorities(send_to_data_storage_layer: &Sender<DataLayerCommands>)
 
     let mut all_top_nodes = calculated_data
         .get_items_status()
-        .iter()
-        .map(|(_, v)| v)
+        .values()
         .filter(|x| !x.is_finished())
         //Person or group items without a parent, meaning a reason for being on the list,
         // should be filtered out.
@@ -771,7 +770,7 @@ impl ShrinkingItemNode<'_> {
         filter: Filter,
         depth: u32,
         filter_to: &HashMap<&RecordId, ItemTimeSpent>,
-    ) -> Vec<(u32, &Item)> {
+    ) -> Vec<(u32, &Item<'_>)> {
         let mut result = Vec::default();
         for i in self.get_children(filter) {
             if filter_to.contains_key(i.get_surreal_record_id()) {

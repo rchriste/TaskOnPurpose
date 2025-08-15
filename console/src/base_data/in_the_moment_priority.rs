@@ -61,11 +61,11 @@ impl<'s> InTheMomentPriorityWithItemAction<'s> {
         }
     }
 
-    pub(crate) fn get_choice(&self) -> &ActionWithItemStatus {
+    pub(crate) fn get_choice(&self) -> &ActionWithItemStatus<'s> {
         &self.choice
     }
 
-    pub(crate) fn get_not_chosen(&self) -> &[ActionWithItemStatus] {
+    pub(crate) fn get_not_chosen(&self) -> &[ActionWithItemStatus<'s>] {
         &self.not_chosen
     }
 

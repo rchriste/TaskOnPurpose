@@ -40,7 +40,7 @@ impl<'s> DisplayItemStatus<'s> {
         }
     }
 
-    pub(crate) fn get_item_status(&self) -> &'s ItemStatus {
+    pub(crate) fn get_item_status(&self) -> &'s ItemStatus<'s> {
         self.item_status
     }
 

@@ -1,13 +1,13 @@
 use std::{iter, time::Duration};
 
 use ahash::HashMap;
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use surrealdb::opt::RecordId;
 
 use crate::{
     base_data::{event::Event, item::Item},
     data_storage::surrealdb_layer::surreal_item::{
-        EqF32, SurrealDependency, SurrealScheduled, SurrealUrgency,
+        SurrealDependency, SurrealScheduled, SurrealUrgency,
     },
 };
 
@@ -431,7 +431,7 @@ impl<'s> ItemStatus<'s> {
         self.item_node.has_dependencies(filter)
     }
 
-    pub(crate) fn get_urgency_plan(&self) -> &Option<UrgencyPlanWithItemNode> {
+    pub(crate) fn get_urgency_plan(&self) -> &Option<UrgencyPlanWithItemNode<'s>> {
         &self.urgency_plan
     }
 
@@ -535,32 +535,6 @@ impl<'s> ItemStatus<'s> {
                     }
                 })),
         )
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum LapCountGreaterOrLess {
-    GreaterThan,
-    LessThan,
-}
-
-impl From<TimeDelta> for LapCountGreaterOrLess {
-    fn from(time_delta: TimeDelta) -> Self {
-        if time_delta > TimeDelta::zero() {
-            LapCountGreaterOrLess::GreaterThan
-        } else {
-            LapCountGreaterOrLess::LessThan
-        }
-    }
-}
-
-impl From<EqF32> for LapCountGreaterOrLess {
-    fn from(eq_f32: EqF32) -> Self {
-        if eq_f32 > 0.0 {
-            LapCountGreaterOrLess::GreaterThan
-        } else {
-            LapCountGreaterOrLess::LessThan
-        }
     }
 }
 

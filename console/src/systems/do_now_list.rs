@@ -44,8 +44,7 @@ impl DoNowList {
                 //Get all top level items
                 let everything_that_has_no_parent = calculated_data
                     .get_items_status()
-                    .iter()
-                    .map(|(_, v)| v)
+                    .values()
                     .filter(|x| !x.has_parents(Filter::Active) && x.is_active())
                     .collect::<Vec<_>>();
 
@@ -154,7 +153,7 @@ impl DoNowList {
         self.borrow_calculated_data().get_items_status()
     }
 
-    pub(crate) fn get_upcoming(&self) -> &Upcoming {
+    pub(crate) fn get_upcoming(&self) -> &Upcoming<'_> {
         self.borrow_upcoming()
     }
 
@@ -162,7 +161,7 @@ impl DoNowList {
         self.borrow_calculated_data().get_now()
     }
 
-    pub(crate) fn get_time_spent_log(&self) -> &[TimeSpent] {
+    pub(crate) fn get_time_spent_log(&self) -> &[TimeSpent<'_>] {
         self.borrow_calculated_data().get_time_spent_log()
     }
 
@@ -170,7 +169,7 @@ impl DoNowList {
         self.borrow_calculated_data().get_current_mode()
     }
 
-    pub(crate) fn get_events(&self) -> &HashMap<&RecordId, Event> {
+    pub(crate) fn get_events(&self) -> &HashMap<&RecordId, Event<'_>> {
         self.borrow_calculated_data().get_events()
     }
 
