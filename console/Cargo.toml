@@ -6,12 +6,10 @@ edition = "2024"
 [dependencies]
 inquire = { git = "https://github.com/rchriste/inquire", branch = "main", features = ["editor"] } #inquire is for building interactive prompts in terminals
 tokio = { version = "1.44.2", features = ["full"] } #Added so I can use Surreal DB
-futures = "0.3" #Recommended by the official Rust Async book for async programming
 #Added so I can store and persist data, kv-mem is an in memory database that is maybe not required in a not test build
 surrealdb-alpha = { version = "2.0.9", features = ["kv-mem", "kv-rocksdb"] }
 serde = "1.0.208" #Implied to be required by surrealdb_extra's getting started documentation
 chrono = "0.4.38"
-parse_datetime = "0.10.0" #So I can parse when to expect something to be available, fundu should replace this
 fundu = { version = "2.0.1", features = ["standard", "custom"] } #So I can parse when to expect something to be available
 dateparser = { git = "https://github.com/rchriste/dateparser", branch = "main" }
 lazy_static = "1.4.0" #So I can efficiently parse regular expressions
