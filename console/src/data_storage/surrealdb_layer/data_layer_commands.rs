@@ -1,5 +1,4 @@
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
 use surrealdb::{
     Surreal,
     engine::any::{Any, IntoEndpoint, connect},
@@ -487,11 +486,6 @@ async fn upgrade_time_spent_log(db: &Surreal<Any>) {
             .unwrap();
         assert_eq!(time_spent, updated);
     }
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
-struct SurrealIdOnly {
-    id: Thing,
 }
 
 async fn send_time_spent(sender: oneshot::Sender<Vec<SurrealTimeSpent>>, db: &Surreal<Any>) {

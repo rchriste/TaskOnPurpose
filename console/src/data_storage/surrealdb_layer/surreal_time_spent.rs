@@ -30,12 +30,6 @@ pub(crate) enum SurrealDedication {
     BackgroundTask,
 }
 
-#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
-pub(crate) enum SurrealDedicationOld {
-    PrimaryTask,
-    SecondaryTask,
-}
-
 impl From<NewTimeSpent> for SurrealTimeSpent {
     fn from(new_time_spent: NewTimeSpent) -> Self {
         SurrealTimeSpent {
@@ -49,14 +43,6 @@ impl From<NewTimeSpent> for SurrealTimeSpent {
             urgency: new_time_spent.urgency,
         }
     }
-}
-
-#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
-pub(crate) struct SurrealBulletListPositionOld {
-    pub(crate) position_in_list: u64,
-    pub(crate) lap_count: f32,
-    pub(crate) next_lower_lap_count: Option<f32>,
-    pub(crate) next_higher_lap_count: Option<f32>,
 }
 
 impl SurrealTimeSpent {

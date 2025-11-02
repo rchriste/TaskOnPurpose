@@ -145,34 +145,12 @@ pub(crate) enum SurrealItemType {
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
-pub(crate) enum SurrealItemTypeOld {
-    #[default]
-    Undeclared,
-    Action,
-    Goal(SurrealHowMuchIsInMyControl),
-    IdeaOrThought,
-    Motivation,
-    PersonOrGroup,
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
 pub(crate) enum SurrealMotivationKind {
     #[default]
     NotSet,
     CoreWork,
     NonCoreWork,
     DoesNotFitInCoreOrNonCore,
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
-pub(crate) enum ItemTypeOld {
-    #[default]
-    Undeclared,
-    Action,
-    Goal(SurrealHowMuchIsInMyControl),
-    IdeaOrThought,
-    Motivation,
-    PersonOrGroup,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
@@ -185,28 +163,12 @@ pub(crate) enum SurrealHowMuchIsInMyControl {
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
-pub(crate) enum GoalType {
-    #[default]
-    NotSpecified,
-    AspirationalHope,
-    TangibleMilestone,
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
 pub(crate) enum Responsibility {
     #[default]
     ProactiveActionToTake,
     ReactiveBeAvailableToAct,
     WaitingFor, //TODO: This should not exist it should just be a TrackingToBeAwareOf that could be a Question or have some kind of automated way to track and watch and know
     TrackingToBeAwareOf,
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
-pub(crate) enum Permanence {
-    Maintenance,
-    Project,
-    #[default]
-    NotSet,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
@@ -247,14 +209,6 @@ pub(crate) enum SurrealFrequency {
     Yearly,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
-pub(crate) enum EnterListReasonOldVersion {
-    DateTime(Datetime),
-    HighestUncovered {
-        earliest: Datetime,
-        review_after: Datetime,
-    },
-}
 //This is a newtype pattern for f32 that implements PartialEq and Eq
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct EqF32(f32);
@@ -394,84 +348,6 @@ impl Mul<&EqF32> for TimeDelta {
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
-pub(crate) enum InRelationToRatioType {
-    AmountOfTimeSpent { multiplier: EqF32 },
-    IterationCount { multiplier: EqF32 },
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
-pub(crate) enum SurrealStaging {
-    #[default]
-    NotSet,
-    MentallyResident {
-        enter_list: EnterListReasonOldVersion,
-        lap: SurrealLap,
-    },
-    OnDeck {
-        enter_list: EnterListReasonOldVersion,
-        lap: SurrealLap,
-    },
-    Planned,
-    ThinkingAbout,
-    Released,
-    InRelationTo {
-        start: Datetime,
-        other_item: RecordId,
-        ratio: InRelationToRatioType,
-    },
-}
-
-impl PartialOrd for SurrealStaging {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for SurrealStaging {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match self {
-            SurrealStaging::NotSet => match other {
-                SurrealStaging::NotSet => Ordering::Equal,
-                _ => Ordering::Less,
-            },
-            SurrealStaging::MentallyResident { .. } => match other {
-                SurrealStaging::NotSet => Ordering::Greater,
-                SurrealStaging::MentallyResident { .. } => Ordering::Equal,
-                _ => Ordering::Less,
-            },
-            SurrealStaging::InRelationTo { .. } => match other {
-                SurrealStaging::NotSet | SurrealStaging::MentallyResident { .. } => {
-                    Ordering::Greater
-                }
-                SurrealStaging::InRelationTo { .. } => Ordering::Equal,
-                _ => Ordering::Less,
-            },
-            SurrealStaging::OnDeck { .. } => match other {
-                SurrealStaging::NotSet
-                | SurrealStaging::MentallyResident { .. }
-                | SurrealStaging::InRelationTo { .. } => Ordering::Greater,
-                SurrealStaging::OnDeck { .. } => Ordering::Equal,
-                _ => Ordering::Less,
-            },
-            SurrealStaging::Planned => match other {
-                SurrealStaging::Released | SurrealStaging::ThinkingAbout => Ordering::Less,
-                SurrealStaging::Planned => Ordering::Equal,
-                _ => Ordering::Greater,
-            },
-            SurrealStaging::ThinkingAbout => match other {
-                SurrealStaging::Released => Ordering::Less,
-                SurrealStaging::ThinkingAbout => Ordering::Equal,
-                _ => Ordering::Greater,
-            },
-            SurrealStaging::Released => match other {
-                SurrealStaging::Released => Ordering::Equal,
-                _ => Ordering::Greater,
-            },
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
 pub(crate) enum SurrealLap {
     AlwaysTimer(Duration),
     ///The amount of time that should be logged or worked on before the lap count is 1.
@@ -543,12 +419,6 @@ impl SurrealScheduled {
             SurrealScheduled::Range { start_range, .. } => &(start_range.0),
         }
     }
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
-pub(crate) enum SurrealScheduledPriority {
-    Always,
-    WhenRoutineIsActive,
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
@@ -632,22 +502,6 @@ pub(crate) struct SurrealItemOldVersion {
 
     #[cfg_attr(test, builder(default))]
     pub(crate) urgency_plan: Option<SurrealUrgencyPlan>,
-}
-
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
-pub(crate) enum SurrealScheduledOldVersion {
-    #[default]
-    NotScheduled,
-    ScheduledExact {
-        start: Datetime,
-        duration: Duration,
-        priority: SurrealScheduledPriority,
-    },
-    ScheduledRange {
-        start_range: (Datetime, Datetime),
-        duration: Duration,
-        priority: SurrealScheduledPriority,
-    },
 }
 
 impl From<SurrealItemOldVersion> for SurrealItem {
