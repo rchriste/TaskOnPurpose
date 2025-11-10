@@ -35,7 +35,13 @@ impl Display for DisplayActionWithItemStatus<'_> {
             }
             ActionWithItemStatus::ReviewItem(item_status) => {
                 let display = DisplayItemStatus::new(item_status, self.filter, self.display_format);
-                write!(f, "[🔍 Review] {}", display)
+                if let Some(review_frequency) =
+                    item_status.get_item().get_surreal_review_frequency()
+                {
+                    write!(f, "[🔍 Review - {}] {}", review_frequency, display)
+                } else {
+                    write!(f, "[🔍 Review] {}", display)
+                }
             }
             ActionWithItemStatus::SetReadyAndUrgency(item_status) => {
                 let display = DisplayItemStatus::new(item_status, self.filter, self.display_format);

@@ -359,6 +359,10 @@ impl<'s> Item<'s> {
     pub(crate) fn get_surreal_review_guidance(&self) -> &Option<SurrealReviewGuidance> {
         &self.surreal_item.review_guidance
     }
+
+    pub(crate) fn get_surreal_review_frequency(&self) -> &Option<SurrealFrequency> {
+        &self.surreal_item.review_frequency
+    }
 }
 
 #[cfg(test)]

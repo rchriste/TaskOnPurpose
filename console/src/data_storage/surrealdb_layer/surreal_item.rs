@@ -209,6 +209,27 @@ pub(crate) enum SurrealFrequency {
     Yearly,
 }
 
+impl Display for SurrealFrequency {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SurrealFrequency::NoneReviewWithParent => write!(f, "None (Review With Parent)"),
+            SurrealFrequency::Range {
+                range_min: _,
+                range_max: _,
+            } => write!(f, "Custom Range"),
+            SurrealFrequency::Hourly => write!(f, "Hourly"),
+            SurrealFrequency::Daily => write!(f, "Daily"),
+            SurrealFrequency::EveryFewDays => write!(f, "Every Few Days"),
+            SurrealFrequency::Weekly => write!(f, "Weekly"),
+            SurrealFrequency::BiMonthly => write!(f, "Bi-Monthly"),
+            SurrealFrequency::Monthly => write!(f, "Monthly"),
+            SurrealFrequency::Quarterly => write!(f, "Quarterly"),
+            SurrealFrequency::SemiAnnually => write!(f, "Semi-Annually"),
+            SurrealFrequency::Yearly => write!(f, "Yearly"),
+        }
+    }
+}
+
 //This is a newtype pattern for f32 that implements PartialEq and Eq
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct EqF32(f32);
