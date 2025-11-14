@@ -328,13 +328,14 @@ pub(crate) async fn present_do_now_list_menu(
                         .get_all_items_status()
                         .values()
                         .filter(|x| {
-                            x.get_dependencies(Filter::Active).any(|x| match x {
-                                DependencyWithItemNode::AfterEvent(event_waiting_on) => {
-                                    event_waiting_on.get_surreal_record_id()
-                                        == event.get_surreal_record_id()
-                                }
-                                _ => false,
-                            })
+                            x.is_active()
+                                && x.get_dependencies(Filter::Active).any(|x| match x {
+                                    DependencyWithItemNode::AfterEvent(event_waiting_on) => {
+                                        event_waiting_on.get_surreal_record_id()
+                                            == event.get_surreal_record_id()
+                                    }
+                                    _ => false,
+                                })
                         })
                         .collect::<Vec<_>>();
                     let list = chain!(
