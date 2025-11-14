@@ -227,8 +227,8 @@ pub(crate) async fn prompt_for_dependencies(
             let now = Utc::now();
             let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
             let calculated_data = CalculatedData::new_from_base_data(base_data);
-            let excluded = if currently_selected.is_some() {
-                vec![currently_selected.expect("is some").get_item()]
+            let excluded = if let Some(currently_selected) = currently_selected {
+                vec![currently_selected.get_item()]
             } else {
                 vec![]
             };
