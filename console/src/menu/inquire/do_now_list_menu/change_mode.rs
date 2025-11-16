@@ -97,28 +97,19 @@ pub(crate) async fn present_change_mode_menu(
             mut a_parent_chain: Vec<&Mode<'_>>,
             mut b_parent_chain: Vec<&Mode<'_>>,
         ) -> Ordering {
-            let a_parent_chain_last = a_parent_chain.last();
-            let b_parent_chain_last = b_parent_chain.last();
-            if a_parent_chain_last.is_none() && b_parent_chain_last.is_none() {
-                Ordering::Equal
-            } else if a_parent_chain_last.is_none() {
-                Ordering::Less
-            } else if b_parent_chain_last.is_none() {
-                Ordering::Greater
-            } else {
-                let a_parent_chain_last =
-                    a_parent_chain_last.expect("Earlier if statement guarantees this is_some()");
-                let b_parent_chain_last =
-                    b_parent_chain_last.expect("Earlier if statement guarantees this is_some()");
-                let ordering = a_parent_chain_last
-                    .get_name()
-                    .cmp(b_parent_chain_last.get_name());
-                if let Ordering::Equal = ordering {
-                    a_parent_chain.pop();
-                    b_parent_chain.pop();
-                    compare_chains(a_parent_chain, b_parent_chain)
-                } else {
-                    ordering
+            match (a_parent_chain.last(), b_parent_chain.last()) {
+                (None, None) => Ordering::Equal,
+                (None, Some(_)) => Ordering::Less,
+                (Some(_), None) => Ordering::Greater,
+                (Some(a_last), Some(b_last)) => {
+                    let ordering = a_last.get_name().cmp(b_last.get_name());
+                    if let Ordering::Equal = ordering {
+                        a_parent_chain.pop();
+                        b_parent_chain.pop();
+                        compare_chains(a_parent_chain, b_parent_chain)
+                    } else {
+                        ordering
+                    }
                 }
             }
         }
@@ -265,7 +256,7 @@ pub(crate) async fn present_change_mode_menu(
             match selection {
                 Ok(DetailsMenu::ReturnToDoNowList) => Ok(()),
                 Ok(DetailsMenu::EditWhatIsInTheMode) => {
-                    present_edit_mode_scope_menu(&mode, send_to_data_storage_layer).await
+                    present_edit_mode_scope_menu(mode, send_to_data_storage_layer).await
                 }
                 Ok(DetailsMenu::Rename) => {
                     let name = inquire::Text::new("Enter the new name of the mode")
@@ -386,7 +377,7 @@ async fn select_items_for_mode(
         let selected = select_an_item(
             dont_show_these_items,
             SelectAnItemSortingOrder::MotivationsFirst,
-            &calculated_data,
+            calculated_data,
             ShowCreateNewItem::No,
         )
         .await;

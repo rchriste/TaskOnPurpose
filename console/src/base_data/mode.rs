@@ -75,32 +75,30 @@ impl<'s> Mode<'s> {
             }
         } ).collect::<Vec<_>>();
             mode_categories.select_highest_mode_category()
+        } else if self
+            .surreal_mode
+            .core_in_scope
+            .iter()
+            .any(|x| x.is_importance_in_scope && x.for_item == *item.get_surreal_record_id())
+        {
+            ModeCategory::Core
+        } else if self
+            .surreal_mode
+            .non_core_in_scope
+            .iter()
+            .any(|x| x.is_importance_in_scope && x.for_item == *item.get_surreal_record_id())
+        {
+            ModeCategory::NonCore
+        } else if self
+            .surreal_mode
+            .explicitly_out_of_scope_items
+            .iter()
+            .any(|x| x == item.get_surreal_record_id())
+        {
+            ModeCategory::OutOfScope
         } else {
-            if self
-                .surreal_mode
-                .core_in_scope
-                .iter()
-                .any(|x| x.is_importance_in_scope && x.for_item == *item.get_surreal_record_id())
-            {
-                ModeCategory::Core
-            } else if self
-                .surreal_mode
-                .non_core_in_scope
-                .iter()
-                .any(|x| x.is_importance_in_scope && x.for_item == *item.get_surreal_record_id())
-            {
-                ModeCategory::NonCore
-            } else if self
-                .surreal_mode
-                .explicitly_out_of_scope_items
-                .iter()
-                .any(|x| x == item.get_surreal_record_id())
-            {
-                ModeCategory::OutOfScope
-            } else {
-                ModeCategory::NotDeclared {
-                    item_to_specify: item.get_surreal_record_id(),
-                }
+            ModeCategory::NotDeclared {
+                item_to_specify: item.get_surreal_record_id(),
             }
         }
     }
@@ -185,9 +183,7 @@ impl<'a> SelectHighestModeCategory<'a> for Vec<ModeCategory<'a>> {
             ModeCategory::NotDeclared { item_to_specify } => Some(item_to_specify),
             _ => None,
         }) {
-            ModeCategory::NotDeclared {
-                item_to_specify: item_to_specify,
-            }
+            ModeCategory::NotDeclared { item_to_specify }
         } else {
             panic!(
                 "This should not happen, because we are getting self and parents so there should always be a ModeCategory match"
