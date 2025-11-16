@@ -52,16 +52,10 @@ impl<'a> IsInTheMode<'a> for CurrentMode<'a> {
 }
 
 impl<'s> CurrentMode<'s> {
-    pub(crate) fn new(
-        surreal_current_mode: &SurrealCurrentMode,
-        mode_nodes: &'s [ModeNode<'s>],
-    ) -> Self {
+    pub(crate) fn new(mode_id: &surrealdb::sql::Thing, mode_nodes: &'s [ModeNode<'s>]) -> Self {
         let mode = mode_nodes
             .iter()
-            .find(|mode| {
-                mode.get_surreal_id()
-                    == surreal_current_mode.mode.as_ref().expect("Mode must exist")
-            })
+            .find(|mode_node| mode_node.get_surreal_id() == mode_id)
             .expect("Mode must exist");
 
         CurrentMode { mode }
