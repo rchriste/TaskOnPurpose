@@ -11,7 +11,7 @@ use crate::{
     base_data::{BaseData, item::Item},
     calculated_data::CalculatedData,
     data_storage::surrealdb_layer::{
-        data_layer_commands::DataLayerCommands, surreal_tables::SurrealTables
+        data_layer_commands::DataLayerCommands, surreal_tables::SurrealTables,
     },
     display::{
         display_dependencies_with_item_node::DisplayDependenciesWithItemNode,

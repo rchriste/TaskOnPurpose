@@ -14,6 +14,7 @@ pub(crate) enum DisplayFormat {
     SingleLine,
 }
 
+#[derive(Clone)]
 pub struct DisplayItemNode<'s> {
     item_node: &'s ItemNode<'s>,
     filter: Filter,

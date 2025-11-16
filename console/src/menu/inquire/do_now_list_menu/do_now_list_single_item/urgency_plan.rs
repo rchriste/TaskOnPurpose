@@ -19,7 +19,7 @@ use crate::{
     },
     menu::inquire::{
         do_now_list_menu::do_now_list_single_item::state_a_smaller_action::{
-            SelectAnItemSortingOrder, select_an_item,
+            SelectAnItemSortingOrder, ShowCreateNewItem, select_an_item,
         },
         parse_exact_or_relative_datetime, parse_exact_or_relative_datetime_help_string,
         prompt_for_mode_scope,
@@ -30,7 +30,7 @@ use crate::{
         item_node::ItemNode,
         item_status::{DependencyWithItemNode, ItemStatus},
         mode_node::ModeNode,
-        why_in_scope_and_action_with_item_status::{ToSurreal, WhyInScope},
+        why_in_scope_and_action_with_item_status::WhyInScope,
     },
 };
 use inquire::{InquireError, Select, Text};
@@ -258,6 +258,7 @@ pub(crate) async fn prompt_for_dependencies(
                 excluded,
                 SelectAnItemSortingOrder::NewestFirst,
                 &calculated_data,
+                ShowCreateNewItem::Yes,
             )
             .await;
             match selected {
@@ -603,6 +604,7 @@ async fn prompt_for_items_to_select(calculated_data: &CalculatedData) -> Vec<&It
             dont_show_these_items,
             SelectAnItemSortingOrder::MotivationsFirst,
             calculated_data,
+            ShowCreateNewItem::Yes,
         )
         .await
         .unwrap()

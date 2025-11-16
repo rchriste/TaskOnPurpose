@@ -27,6 +27,11 @@ pub(crate) enum SelectAnItemSortingOrder {
     NewestFirst,
 }
 
+pub(crate) enum ShowCreateNewItem {
+    Yes,
+    No,
+}
+
 enum ChildItem<'e> {
     CreateNewItem,
     ItemNode(DisplayItemNode<'e>),
@@ -45,6 +50,7 @@ pub(crate) async fn select_an_item<'a>(
     dont_show_these_items: Vec<&Item<'_>>,
     sorting_order: SelectAnItemSortingOrder,
     calculated_data: &'a CalculatedData,
+    show_create_new_item: ShowCreateNewItem,
 ) -> Result<Option<&'a ItemStatus<'a>>, ()> {
     let items_status = calculated_data.get_items_status();
     let active_items = items_status
@@ -85,17 +91,26 @@ pub(crate) async fn select_an_item<'a>(
             existing_items.sort_by(|a, b| a.get_created().cmp(b.get_created()).reverse())
         }
     }
-    let list = chain!(
-        once(ChildItem::CreateNewItem),
-        existing_items.into_iter().map(ChildItem::ItemNode)
-    )
-    .collect::<Vec<_>>();
-    let selection = Select::new(
-        "Select an existing item from this list of all items or create a new item, type to search|",
-        list,
-    )
-    .with_page_size(8)
-    .prompt();
+    let list = match show_create_new_item {
+        ShowCreateNewItem::Yes => chain!(
+            once(ChildItem::CreateNewItem),
+            existing_items.into_iter().map(ChildItem::ItemNode)
+        )
+        .collect::<Vec<_>>(),
+        ShowCreateNewItem::No => existing_items
+            .into_iter()
+            .map(ChildItem::ItemNode)
+            .collect::<Vec<_>>(),
+    };
+    let prompt_text = match show_create_new_item {
+        ShowCreateNewItem::Yes => {
+            "Select an existing item from this list of all items or create a new item, type to search|"
+        }
+        ShowCreateNewItem::No => {
+            "Select an existing item from this list of all items, type to search|"
+        }
+    };
+    let selection = Select::new(prompt_text, list).with_page_size(8).prompt();
     match selection {
         Ok(ChildItem::CreateNewItem) => Ok(None),
         Ok(ChildItem::ItemNode(selected_item)) => {
@@ -121,6 +136,7 @@ pub(crate) async fn state_a_smaller_action(
         vec![selected_item.get_item()],
         SelectAnItemSortingOrder::NewestFirst,
         &calculated_data,
+        ShowCreateNewItem::Yes,
     )
     .await;
 

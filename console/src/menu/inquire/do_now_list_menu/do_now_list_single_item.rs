@@ -19,9 +19,7 @@ use crate::{
     calculated_data::{CalculatedData, parent_lookup::ParentLookup},
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands,
-        surreal_item::{
-            Responsibility, SurrealItemType,
-        },
+        surreal_item::{Responsibility, SurrealItemType},
         surreal_tables::SurrealTables,
     },
     display::{

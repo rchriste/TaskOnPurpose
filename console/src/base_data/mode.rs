@@ -3,7 +3,7 @@ use surrealdb::{opt::RecordId, sql::Thing};
 use crate::{
     data_storage::surrealdb_layer::{
         surreal_item::{SurrealModeScope, SurrealUrgency},
-        surreal_mode::SurrealMode,
+        surreal_mode::{SurrealMode, SurrealScope},
     },
     node::{
         Filter, item_node::ItemNode,
@@ -46,6 +46,18 @@ impl<'s> Mode<'s> {
 
     pub(crate) fn get_surreal(&self) -> &'s SurrealMode {
         self.surreal_mode
+    }
+
+    pub(crate) fn get_core_in_scope(&self) -> &[SurrealScope] {
+        &self.surreal_mode.core_in_scope
+    }
+
+    pub(crate) fn get_non_core_in_scope(&self) -> &[SurrealScope] {
+        &self.surreal_mode.non_core_in_scope
+    }
+
+    pub(crate) fn get_explicitly_out_of_scope_items(&self) -> &[Thing] {
+        &self.surreal_mode.explicitly_out_of_scope_items
     }
 
     pub(crate) fn get_category_by_importance<'a>(

@@ -230,7 +230,7 @@ impl<'s> Item<'s> {
                 } else {
                     None
                 }
-            })   
+            })
             .collect()
     }
 

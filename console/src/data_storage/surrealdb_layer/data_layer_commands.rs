@@ -12,8 +12,7 @@ use tokio::sync::{
 
 use crate::{
     data_storage::surrealdb_layer::{
-        surreal_mode::SurrealMode,
-        surreal_time_spent::SurrealTimeSpentVersion1,
+        surreal_mode::SurrealMode, surreal_time_spent::SurrealTimeSpentVersion1,
     },
     new_event::NewEvent,
     new_item::{NewDependency, NewItem},
@@ -433,7 +432,20 @@ pub(crate) async fn data_storage_endless_loop(
                     assert!(updated.core_in_scope.contains(&scope));
                 }
                 ScopeModeCommand::RemoveCore { mode, item } => {
-                    todo!()
+                    let mut surreal_mode: SurrealMode =
+                        db.select(mode.clone()).await.unwrap().unwrap();
+
+                    surreal_mode
+                        .core_in_scope
+                        .retain(|scope| scope.for_item != item);
+
+                    let updated: SurrealMode = db
+                        .update(mode)
+                        .content(surreal_mode.clone())
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(surreal_mode, updated);
                 }
                 ScopeModeCommand::AddNonCore { mode, scope } => {
                     let updated: SurrealMode = db
@@ -445,7 +457,20 @@ pub(crate) async fn data_storage_endless_loop(
                     assert!(updated.non_core_in_scope.contains(&scope));
                 }
                 ScopeModeCommand::RemoveNonCore { mode, item } => {
-                    todo!()
+                    let mut surreal_mode: SurrealMode =
+                        db.select(mode.clone()).await.unwrap().unwrap();
+
+                    surreal_mode
+                        .non_core_in_scope
+                        .retain(|scope| scope.for_item != item);
+
+                    let updated: SurrealMode = db
+                        .update(mode)
+                        .content(surreal_mode.clone())
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(surreal_mode, updated);
                 }
                 ScopeModeCommand::AddExplicitlyOutOfScope { mode, item } => {
                     let updated: SurrealMode = db
@@ -460,7 +485,20 @@ pub(crate) async fn data_storage_endless_loop(
                     assert!(updated.explicitly_out_of_scope_items.contains(&item));
                 }
                 ScopeModeCommand::RemoveExplicitlyOutOfScope { mode, item } => {
-                    todo!()
+                    let mut surreal_mode: SurrealMode =
+                        db.select(mode.clone()).await.unwrap().unwrap();
+
+                    surreal_mode
+                        .explicitly_out_of_scope_items
+                        .retain(|existing| existing != &item);
+
+                    let updated: SurrealMode = db
+                        .update(mode)
+                        .content(surreal_mode.clone())
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(surreal_mode, updated);
                 }
             },
             None => return, //Channel closed, time to shutdown down, exit
