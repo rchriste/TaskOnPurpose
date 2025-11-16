@@ -67,7 +67,7 @@ impl<'s> CurrentMode<'s> {
         CurrentMode { mode }
     }
 
-    pub(crate) fn get_mode(&self) -> &ModeNode {
+    pub(crate) fn get_mode(&self) -> &ModeNode<'_> {
         self.mode
     }
 

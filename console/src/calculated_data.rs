@@ -110,11 +110,11 @@ impl CalculatedData {
         .build()
     }
 
-    pub(crate) fn get_items(&self) -> &HashMap<&RecordId, Item> {
+    pub(crate) fn get_items(&self) -> &HashMap<&RecordId, Item<'_>> {
         self.borrow_base_data().get_items()
     }
 
-    pub(crate) fn get_active_items(&self) -> &[&Item] {
+    pub(crate) fn get_active_items(&self) -> &[&Item<'_>] {
         self.borrow_base_data().get_active_items()
     }
 
@@ -134,7 +134,7 @@ impl CalculatedData {
         self.borrow_base_data().get_time_spent_log()
     }
 
-    pub(crate) fn get_current_mode(&self) -> &Option<CurrentMode> {
+    pub(crate) fn get_current_mode(&self) -> &Option<CurrentMode<'_>> {
         self.borrow_current_mode()
     }
 

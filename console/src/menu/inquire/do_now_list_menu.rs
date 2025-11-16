@@ -16,7 +16,7 @@ use change_mode::present_change_mode_menu;
 use chrono::{DateTime, Local, Utc};
 use classify_item::present_item_needs_a_classification_menu;
 use declare_scope_for_mode::present_state_if_in_mode_menu;
-use do_now_list_single_item::{LogTime, urgency_plan::present_set_ready_and_urgency_plan_menu};
+use do_now_list_single_item::urgency_plan::present_set_ready_and_urgency_plan_menu;
 use inquire::{InquireError, Select};
 use itertools::chain;
 use parent_back_to_a_motivation::present_parent_back_to_a_motivation_menu;

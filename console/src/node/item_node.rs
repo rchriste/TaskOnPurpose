@@ -443,7 +443,7 @@ pub(crate) struct GrowingItemNodeWithImportanceScope<'s> {
 }
 
 impl<'s> GrowingItemNodeWithImportanceScope<'s> {
-    pub(crate) fn get_item(&self) -> &Item {
+    pub(crate) fn get_item(&self) -> &Item<'_> {
         self.parent.get_item()
     }
 

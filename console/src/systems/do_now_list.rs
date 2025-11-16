@@ -182,7 +182,7 @@ impl DoNowList {
         self.borrow_calculated_data().get_time_spent_log()
     }
 
-    pub(crate) fn get_current_mode(&self) -> &Option<CurrentMode> {
+    pub(crate) fn get_current_mode(&self) -> &Option<CurrentMode<'_>> {
         self.borrow_calculated_data().get_current_mode()
     }
 
