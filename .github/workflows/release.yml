@@ -39,7 +39,7 @@ jobs:
       
       - name: Compress Executable
         run: |
-          tar -cJf OnPurpose_Console_Linux.tar.xz -C ./target/release onpurpose
+          tar -cJf OnPurpose_Console_Linux.tar.xz -C ./target/release taskonpurpose
   
       - name: Upload Release Asset
         id: upload-release-asset
