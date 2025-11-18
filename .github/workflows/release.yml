@@ -58,7 +58,7 @@ jobs:
         
         - name: Compress Executable
           run: |
-            zip OnPurpose_Console_MacOS.zip ./target/release/onpurpose
+            zip OnPurpose_Console_MacOS.zip ./target/release/taskonpurpose
     
         - name: Upload Release Asset
           id: upload-release-asset
