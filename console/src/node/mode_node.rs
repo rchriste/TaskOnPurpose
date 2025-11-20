@@ -53,10 +53,6 @@ impl<'s> ModeNode<'s> {
         self.mode.get_surreal_id()
     }
 
-    pub(crate) fn get_surreal(&self) -> &SurrealMode {
-        self.mode.get_surreal()
-    }
-
     pub(crate) fn get_mode(&self) -> &Mode<'s> {
         self.mode
     }

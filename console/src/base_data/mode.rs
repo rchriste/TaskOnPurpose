@@ -44,10 +44,6 @@ impl<'s> Mode<'s> {
             .expect("Comes from the database so this is always present")
     }
 
-    pub(crate) fn get_surreal(&self) -> &'s SurrealMode {
-        self.surreal_mode
-    }
-
     pub(crate) fn get_core_in_scope(&self) -> &[SurrealScope] {
         &self.surreal_mode.core_in_scope
     }
