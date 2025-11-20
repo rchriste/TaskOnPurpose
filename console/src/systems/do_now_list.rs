@@ -244,3 +244,307 @@ impl<'t> PushIfNew<'t> for Vec<WhyInScopeAndActionWithItemStatus<'t>> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use tokio::sync::mpsc;
+
+    use crate::{
+        base_data::BaseData,
+        calculated_data::CalculatedData,
+        data_storage::surrealdb_layer::{
+            data_layer_commands::{DataLayerCommands, data_storage_start_and_run},
+            surreal_current_mode::NewCurrentMode,
+            surreal_item::{SurrealItemType, SurrealUrgencyPlan},
+            surreal_mode::SurrealMode,
+            surreal_tables::SurrealTables,
+        },
+        new_item::NewItemBuilder,
+        new_mode::NewModeBuilder,
+        node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
+        systems::do_now_list::DoNowList,
+    };
+
+    /// Scenario:
+    /// - Motivation "test motivation"
+    /// - Child step "test step", marked as:
+    ///   - smaller item of the motivation with importance scope AllModes
+    ///   - Ready now
+    ///   - Not urgent
+    /// - Mode: none selected
+    /// Expectation:
+    /// - "test step" appears on the Do Now list as available to work on.
+    #[tokio::test]
+    async fn test_step_with_ready_now_and_not_urgent_shows_up_on_do_now_list_without_mode() {
+        // Arrange DB and data storage layer
+        let (sender, receiver) = mpsc::channel(1);
+        let data_storage_join_handle =
+            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+
+        let now = Utc::now();
+
+        // Create the parent motivation item.
+        sender
+            .send(DataLayerCommands::NewItem(
+                NewItemBuilder::default()
+                    .summary("test motivation")
+                    .item_type(SurrealItemType::Motivation)
+                    .build()
+                    .expect("Valid motivation"),
+            ))
+            .await
+            .expect("Should send motivation");
+
+        // Create the child "test step" item with:
+        // - Ready now (finished = None)
+        // - Not urgent (no urgency plan)
+        sender
+            .send(DataLayerCommands::NewItem(
+                NewItemBuilder::default()
+                    .summary("test step")
+                    .item_type(SurrealItemType::Action)
+                    .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(None)))
+                    .build()
+                    .expect("Valid step"),
+            ))
+            .await
+            .expect("Should send step");
+
+        // Load tables so we can look up the created items.
+        let surreal_tables = SurrealTables::new(&sender)
+            .await
+            .expect("Should load initial tables");
+
+        // Look up the created items to get their record IDs.
+        let motivation_id = surreal_tables
+            .surreal_items
+            .iter()
+            .find(|item| item.summary == "test motivation")
+            .expect("Motivation should exist")
+            .id
+            .as_ref()
+            .expect("Motivation must have id")
+            .clone();
+        let step_id = surreal_tables
+            .surreal_items
+            .iter()
+            .find(|item| item.summary == "test step")
+            .expect("Step should exist")
+            .id
+            .as_ref()
+            .expect("Step must have id")
+            .clone();
+
+        // Use the same data-layer command interface to declare that
+        // "test step" is a smaller item of "test motivation" with
+        // importance scope AllModes.
+        sender
+            .send(DataLayerCommands::ParentItemWithExistingItem {
+                child: step_id,
+                parent: motivation_id,
+                // None means "at the end of the list"; the importance scope
+                // for the smaller item itself is encoded in the SurrealImportance
+                // that the data layer will create.
+                higher_importance_than_this: None,
+            })
+            .await
+            .expect("Should send parent-child relationship command");
+
+        // Reload tables so the parent-child relationship is reflected.
+        let surreal_tables = SurrealTables::new(&sender)
+            .await
+            .expect("Should load updated tables");
+
+        // No mode is created or selected in this scenario.
+
+        // Build BaseData and CalculatedData from the adjusted tables.
+        let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+        let calculated_data = CalculatedData::new_from_base_data(base_data);
+
+        // Act: build the Do Now list with no current mode.
+        let do_now_list = DoNowList::new_do_now_list(calculated_data, &now);
+        let ordered = do_now_list.get_ordered_do_now_list();
+
+        // Assert: there is at least one item in the Do Now list and
+        // "test step" is among them.
+        assert!(
+            !ordered.is_empty(),
+            "Do Now list should not be empty when a ready, non-urgent step exists"
+        );
+
+        let mut found_test_step = false;
+        for entry in ordered {
+            match entry {
+                UrgencyLevelItemWithItemStatus::SingleItem(why) => {
+                    if why.get_action().get_item_node().get_item().get_summary() == "test step" {
+                        found_test_step = true;
+                        break;
+                    }
+                }
+                UrgencyLevelItemWithItemStatus::MultipleItems(list) => {
+                    if list.iter().any(|why| {
+                        why.get_action().get_item_node().get_item().get_summary() == "test step"
+                    }) {
+                        found_test_step = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        assert!(
+            found_test_step,
+            "Expected 'test step' to appear on the Do Now list"
+        );
+
+        drop(sender);
+        data_storage_join_handle
+            .await
+            .expect("Data storage loop should exit");
+    }
+
+    /// Scenario:
+    /// - Motivation "test motivation"
+    /// - Child step "test step" as in the previous test
+    /// - Mode "Test Mode" where "test motivation" is explicitly out of scope
+    /// Expectation (current behavior to expose a bug):
+    /// - Building the Do Now list should hit the assertion in
+    ///   `action_with_item_status.rs` that complains about all choices
+    ///   being removed; for now we encode this as a should_panic test.
+    #[tokio::test]
+    async fn test_step_hidden_when_parent_motivation_is_explicitly_out_of_scope_for_mode() {
+        // Arrange DB and data storage layer
+        let (sender, receiver) = mpsc::channel(1);
+        let data_storage_join_handle =
+            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+
+        let now = Utc::now();
+
+        // Create the parent motivation item.
+        sender
+            .send(DataLayerCommands::NewItem(
+                NewItemBuilder::default()
+                    .summary("test motivation")
+                    .item_type(SurrealItemType::Motivation)
+                    .build()
+                    .expect("Valid motivation"),
+            ))
+            .await
+            .expect("Should send motivation");
+
+        // Create the child "test step" item with:
+        // - Ready now (finished = None)
+        // - Not urgent (no urgency plan)
+        sender
+            .send(DataLayerCommands::NewItem(
+                NewItemBuilder::default()
+                    .summary("test step")
+                    .item_type(SurrealItemType::Action)
+                    .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(None)))
+                    .build()
+                    .expect("Valid step"),
+            ))
+            .await
+            .expect("Should send step");
+
+        // Load tables so we can look up the created items.
+        let surreal_tables = SurrealTables::new(&sender)
+            .await
+            .expect("Should load initial tables");
+
+        // Look up the created items to get their record IDs.
+        let motivation_id = surreal_tables
+            .surreal_items
+            .iter()
+            .find(|item| item.summary == "test motivation")
+            .expect("Motivation should exist")
+            .id
+            .as_ref()
+            .expect("Motivation must have id")
+            .clone();
+        let step_id = surreal_tables
+            .surreal_items
+            .iter()
+            .find(|item| item.summary == "test step")
+            .expect("Step should exist")
+            .id
+            .as_ref()
+            .expect("Step must have id")
+            .clone();
+
+        // Use the same data-layer command interface to declare that
+        // "test step" is a smaller item of "test motivation" with
+        // importance scope AllModes.
+        sender
+            .send(DataLayerCommands::ParentItemWithExistingItem {
+                child: step_id,
+                parent: motivation_id,
+                // None means "at the end of the list"; the importance scope
+                // for the smaller item itself is encoded in the SurrealImportance
+                // that the data layer will create.
+                higher_importance_than_this: None,
+            })
+            .await
+            .expect("Should send parent-child relationship command");
+
+        // Reload tables so the parent-child relationship is reflected.
+        let surreal_tables = SurrealTables::new(&sender)
+            .await
+            .expect("Should load updated tables");
+
+        // Look up the created items to get their record IDs.
+        let motivation_id = surreal_tables
+            .surreal_items
+            .iter()
+            .find(|item| item.summary == "test motivation")
+            .expect("Motivation should exist")
+            .id
+            .as_ref()
+            .expect("Motivation must have id")
+            .clone();
+
+        // Create a mode "Test Mode" where the motivation is explicitly out of scope.
+        let (mode_sender, mode_receiver) = tokio::sync::oneshot::channel::<SurrealMode>();
+        let new_mode = NewModeBuilder::default()
+            .summary("Test Mode")
+            .explicitly_out_of_scope_items(vec![motivation_id.clone()])
+            .build()
+            .expect("Valid mode");
+        sender
+            .send(DataLayerCommands::NewMode(new_mode, mode_sender))
+            .await
+            .expect("Should send new mode");
+        let surreal_mode = mode_receiver.await.expect("Mode should be created");
+        let mode_id = surreal_mode
+            .id
+            .as_ref()
+            .expect("Newly created mode should have id")
+            .clone();
+
+        // Set current mode to "Test Mode".
+        let new_current_mode = NewCurrentMode::new(Some(mode_id));
+        sender
+            .send(DataLayerCommands::SetCurrentMode(new_current_mode))
+            .await
+            .expect("Should set current mode");
+
+        // Rebuild BaseData and CalculatedData so they include the new mode and current mode.
+        let surreal_tables = SurrealTables::new(&sender)
+            .await
+            .expect("Should load updated tables");
+        let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+        let calculated_data = CalculatedData::new_from_base_data(base_data);
+
+        // Act: build the Do Now list; with the current logic this is expected
+        // to trigger the assertion that all choices were removed.
+        let do_now_list = DoNowList::new_do_now_list(calculated_data, &now);
+
+        assert!(do_now_list.get_ordered_do_now_list().is_empty());
+
+        drop(sender);
+        data_storage_join_handle
+            .await
+            .expect("Data storage loop should exit");
+    }
+}

@@ -2,7 +2,7 @@ use surrealdb::{opt::RecordId, sql::Thing};
 
 use crate::{
     data_storage::surrealdb_layer::{
-        surreal_item::{SurrealModeScope, SurrealUrgency},
+        surreal_item::{SurrealModeScope, SurrealUrgency, SurrealUrgencyNoData},
         surreal_mode::{SurrealMode, SurrealScope},
     },
     node::{
@@ -108,20 +108,15 @@ impl<'s> Mode<'s> {
         item: &'a WhyInScopeAndActionWithItemStatus<'a>,
     ) -> ModeCategory<'a> {
         match item.get_urgency_now() {
-            Some(urgency) => match urgency {
-                SurrealUrgency::CrisesUrgent(surreal_mode_scope) => todo!(),
-                SurrealUrgency::Scheduled(surreal_mode_scope, surreal_scheduled) => todo!(),
-                SurrealUrgency::DefinitelyUrgent(surreal_mode_scope) => match surreal_mode_scope {
-                    SurrealModeScope::AllModes => ModeCategory::NonCore,
-                    SurrealModeScope::DefaultModesWithChanges {
-                        extra_modes_included,
-                    } => todo!(
-                        "Need to check default modes, and extra modes, and if extra_modes_included causes it to get pulled in"
-                    ),
-                },
-                SurrealUrgency::MaybeUrgent(surreal_mode_scope) => todo!(),
+            Some(urgency) => {
+                // Delegate to the shared helper so importance- and urgency-based
+                // categorization use the same parent-chain and scope logic.
+                let item_node = item.get_action().get_item_node();
+                self.get_category_by_urgency_for_item_node_with_urgency(item_node, &urgency)
+            }
+            None => ModeCategory::NotDeclared {
+                item_to_specify: item.get_surreal_record_id(),
             },
-            None => todo!("none"),
         }
     }
 
@@ -132,21 +127,12 @@ impl<'s> Mode<'s> {
         item: &'a ItemNode<'a>,
     ) -> ModeCategory<'a> {
         match item.get_urgency_now() {
-            Some(Some(urgency)) => match urgency {
-                SurrealUrgency::CrisesUrgent(surreal_mode_scope) => todo!(),
-                SurrealUrgency::Scheduled(surreal_mode_scope, surreal_scheduled) => todo!(),
-                SurrealUrgency::DefinitelyUrgent(surreal_mode_scope) => match surreal_mode_scope {
-                    SurrealModeScope::AllModes => ModeCategory::NonCore,
-                    SurrealModeScope::DefaultModesWithChanges {
-                        extra_modes_included,
-                    } => todo!(
-                        "Need to check default modes, and extra modes, and if extra_modes_included causes it to get pulled in"
-                    ),
-                },
-                SurrealUrgency::MaybeUrgent(surreal_mode_scope) => todo!(),
+            Some(Some(urgency)) => {
+                self.get_category_by_urgency_for_item_node_with_urgency(item, &urgency)
+            }
+            Some(None) | None => ModeCategory::NotDeclared {
+                item_to_specify: item.get_surreal_record_id(),
             },
-            Some(None) => todo!("Some(None), probably the same as just None"),
-            None => todo!("none"),
         }
     }
 
@@ -164,6 +150,98 @@ impl<'s> Mode<'s> {
                     }
                 }
             })
+    }
+
+    /// Shared helper for urgency-based categorization that:
+    /// - Walks the item and its parents (most-specific first)
+    /// - Looks at this mode's `core_in_scope`, `non_core_in_scope`, and
+    ///   `explicitly_out_of_scope_items` lists
+    /// - Uses the following precedence *within the same item*:
+    ///   Core > NonCore > OutOfScope
+    /// - Uses the following precedence *across the parent chain*:
+    ///   the most specific item (closest to the current item) that has a
+    ///   setting wins
+    /// - Only if no level specifies anything do we fall back to:
+    ///   - NonCore when the urgency scope is `AllModes`
+    ///   - NotDeclared otherwise
+    fn get_category_by_urgency_for_item_node_with_urgency<'a>(
+        &self,
+        item_node: &'a ItemNode<'a>,
+        urgency: &SurrealUrgency,
+    ) -> ModeCategory<'a> {
+        // Helper to see if a SurrealScope entry applies for this urgency.
+        let urgency_matches = |scope_urgency: &SurrealUrgencyNoData| -> bool {
+            match (scope_urgency, urgency) {
+                (SurrealUrgencyNoData::CrisesUrgent, SurrealUrgency::CrisesUrgent(_)) => true,
+                (SurrealUrgencyNoData::Scheduled, SurrealUrgency::Scheduled(_, _)) => true,
+                (SurrealUrgencyNoData::DefinitelyUrgent, SurrealUrgency::DefinitelyUrgent(_)) => {
+                    true
+                }
+                (SurrealUrgencyNoData::MaybeUrgent, SurrealUrgency::MaybeUrgent(_)) => true,
+                _ => false,
+            }
+        };
+
+        // Start from the current item and walk up the parent chain,
+        // letting more specific settings override parent settings.
+        let self_and_parents = item_node.get_self_and_parents(Filter::Active);
+
+        for item in self_and_parents.iter().rev() {
+            let item_id = item.get_surreal_record_id();
+
+            // Track the best category for THIS specific item, based on precedence:
+            // Core > NonCore > OutOfScope.
+            let mut category_for_this_item: Option<ModeCategory> = None;
+
+            // Explicitly out-of-scope for this mode and this item.
+            if self
+                .surreal_mode
+                .explicitly_out_of_scope_items
+                .iter()
+                .any(|x| x == item_id)
+            {
+                category_for_this_item = Some(ModeCategory::OutOfScope);
+            }
+
+            // Non-core scopes for this mode, only for this item and this urgency.
+            if self.surreal_mode.non_core_in_scope.iter().any(|scope| {
+                scope.for_item == *item_id
+                    && scope
+                        .urgencies_to_include
+                        .iter()
+                        .any(|u| urgency_matches(u))
+            }) {
+                category_for_this_item = Some(ModeCategory::NonCore);
+            }
+
+            // Core scopes for this mode, only for this item and this urgency.
+            if self.surreal_mode.core_in_scope.iter().any(|scope| {
+                scope.for_item == *item_id
+                    && scope
+                        .urgencies_to_include
+                        .iter()
+                        .any(|u| urgency_matches(u))
+            }) {
+                category_for_this_item = Some(ModeCategory::Core);
+            }
+
+            // If this item has any explicit setting, it wins over all parents. So this is why we are short circuiting the loop and exiting on the first match
+            if let Some(category) = category_for_this_item {
+                return category;
+            }
+        }
+
+        // No explicit scope found on the item or any of its parents. At this
+        // point, the only thing we know is the urgency's mode scope:
+        match urgency.get_scope() {
+            // AllModes: in scope for all modes, but as NonCore by default.
+            SurrealModeScope::AllModes => ModeCategory::NonCore,
+            // DefaultModesWithChanges: only in scope where explicitly configured,
+            // so when nothing is configured for this mode we treat it as NotDeclared.
+            SurrealModeScope::DefaultModesWithChanges { .. } => ModeCategory::NotDeclared {
+                item_to_specify: item_node.get_surreal_record_id(),
+            },
+        }
     }
 }
 
