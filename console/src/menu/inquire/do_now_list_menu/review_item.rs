@@ -24,6 +24,7 @@ use crate::{
             state_a_smaller_action::state_a_smaller_action,
             urgency_plan::{AddOrRemove, prompt_for_dependencies, prompt_for_urgency_plan},
         },
+        do_now_list_menu::pick_item_review_frequency::present_pick_item_review_frequency_menu,
         select_higher_importance_than_this::select_higher_importance_than_this,
     },
     node::{
@@ -39,6 +40,7 @@ enum ReviewItemMenuChoices<'e> {
     UpdateRelativeImportanceShowParent { parent: &'e Item<'e> },
     UpdateDependencies { current_item: &'e ItemStatus<'e> },
     UpdateUrgencyPlan { current_item: &'e ItemStatus<'e> },
+    UpdateReviewFrequency { current_item: &'e ItemStatus<'e> },
     FinishThisItem,
     AddNewParent,
     AddNewChild,
@@ -95,6 +97,19 @@ impl Display for ReviewItemMenuChoices<'_> {
                 );
                 write!(f, "Update urgency, current setting: {}", display_urgency)
             }
+            ReviewItemMenuChoices::UpdateReviewFrequency { current_item } => {
+                if let Some(review_frequency) =
+                    current_item.get_item().get_surreal_review_frequency()
+                {
+                    write!(
+                        f,
+                        "Update review frequency, current setting: {}",
+                        review_frequency
+                    )
+                } else {
+                    write!(f, "Update review frequency, current setting: not set")
+                }
+            }
             ReviewItemMenuChoices::FinishThisItem => write!(f, "Finish this item"),
             ReviewItemMenuChoices::AddNewParent => write!(f, "Add new parent"),
             ReviewItemMenuChoices::AddNewChild => write!(f, "Add new child"),
@@ -149,6 +164,7 @@ impl ReviewItemMenuChoices<'_> {
         }
 
         list.push(ReviewItemMenuChoices::UpdateUrgencyPlan { current_item });
+        list.push(ReviewItemMenuChoices::UpdateReviewFrequency { current_item });
         list.push(ReviewItemMenuChoices::UpdateDependencies { current_item });
         list.push(ReviewItemMenuChoices::FinishThisItem);
         list.push(ReviewItemMenuChoices::AddNewParent);
@@ -310,6 +326,18 @@ async fn present_review_item_menu_internal<'a>(
                     }
                 }
             }
+
+            refresh_items_present_review_item_menu_internal(
+                item_under_review,
+                selected_item,
+                send_to_data_storage_layer,
+            )
+            .await
+        }
+        ReviewItemMenuChoices::UpdateReviewFrequency { .. } => {
+            present_pick_item_review_frequency_menu(selected_item, send_to_data_storage_layer)
+                .await
+                .unwrap();
 
             refresh_items_present_review_item_menu_internal(
                 item_under_review,
