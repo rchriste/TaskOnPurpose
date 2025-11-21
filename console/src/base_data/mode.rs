@@ -16,7 +16,7 @@ pub(crate) struct Mode<'s> {
     surreal_mode: &'s SurrealMode,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub(crate) enum ModeCategory<'e> {
     Core,
     NonCore,

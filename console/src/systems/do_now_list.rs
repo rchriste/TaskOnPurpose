@@ -252,6 +252,7 @@ mod tests {
 
     use crate::{
         base_data::BaseData,
+        base_data::mode::ModeCategory,
         calculated_data::CalculatedData,
         data_storage::surrealdb_layer::{
             data_layer_commands::{DataLayerCommands, data_storage_start_and_run},
@@ -262,6 +263,7 @@ mod tests {
         },
         new_item::NewItemBuilder,
         new_mode::NewModeBuilder,
+        node::Filter,
         node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
         systems::do_now_list::DoNowList,
     };
@@ -541,6 +543,187 @@ mod tests {
         let do_now_list = DoNowList::new_do_now_list(calculated_data, &now);
 
         assert!(do_now_list.get_ordered_do_now_list().is_empty());
+
+        drop(sender);
+        data_storage_join_handle
+            .await
+            .expect("Data storage loop should exit");
+    }
+
+    /// Scenario:
+    /// - Motivation "test motivation" (top-level)
+    /// - Child "test step" is a smaller item of the motivation, with importance scope
+    ///   `DefaultModesWithChanges` and `extra_modes_included` containing an extra mode.
+    /// - Current mode "Test Mode" explicitly marks the motivation out of scope.
+    ///
+    /// Expectation (to trigger a known TODO):
+    /// - Calling `get_category_by_importance` on the child while a current mode exists
+    ///   should panic at the `todo!` in `Mode::get_category_by_importance` for
+    ///   `DefaultModesWithChanges`.
+    ///
+    /// This test is intentionally *not* marked `should_panic` so it fails until the
+    /// TODO is implemented.
+    #[tokio::test]
+    async fn test_default_modes_with_changes_importance_scope__default_modes_with_changes_treats_a_child_as_non_core()
+     {
+        // Arrange DB and data storage layer.
+        let (sender, receiver) = mpsc::channel(1);
+        let data_storage_join_handle =
+            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+
+        let now = Utc::now();
+
+        // Create the parent motivation item.
+        sender
+            .send(DataLayerCommands::NewItem(
+                NewItemBuilder::default()
+                    .summary("test motivation")
+                    .item_type(SurrealItemType::Motivation)
+                    .build()
+                    .expect("Valid motivation"),
+            ))
+            .await
+            .expect("Should send motivation");
+
+        // Create the child "test step" item.
+        sender
+            .send(DataLayerCommands::NewItem(
+                NewItemBuilder::default()
+                    .summary("test step")
+                    .item_type(SurrealItemType::Action)
+                    .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(None)))
+                    .build()
+                    .expect("Valid step"),
+            ))
+            .await
+            .expect("Should send step");
+
+        // Load tables to look up the created items.
+        let surreal_tables = SurrealTables::new(&sender)
+            .await
+            .expect("Should load initial tables");
+
+        let motivation_id = surreal_tables
+            .surreal_items
+            .iter()
+            .find(|item| item.summary == "test motivation")
+            .expect("Motivation should exist")
+            .id
+            .as_ref()
+            .expect("Motivation must have id")
+            .clone();
+        let step_id = surreal_tables
+            .surreal_items
+            .iter()
+            .find(|item| item.summary == "test step")
+            .expect("Step should exist")
+            .id
+            .as_ref()
+            .expect("Step must have id")
+            .clone();
+        // Create a current mode where the parent motivation is explicitly out of scope.
+        let (mode_sender, mode_receiver) = tokio::sync::oneshot::channel::<SurrealMode>();
+        let new_mode = NewModeBuilder::default()
+            .summary("Test Mode")
+            .explicitly_out_of_scope_items(vec![motivation_id.clone()])
+            .build()
+            .expect("Valid mode");
+        sender
+            .send(DataLayerCommands::NewMode(new_mode, mode_sender))
+            .await
+            .expect("Should send new mode");
+        let surreal_mode = mode_receiver.await.expect("Mode should be created");
+        let mode_id = surreal_mode
+            .id
+            .as_ref()
+            .expect("Newly created mode should have id")
+            .clone();
+
+        // Parent "test step" under "test motivation" with DefaultModesWithChanges scope.
+        sender
+            .send(DataLayerCommands::ParentItemWithExistingItem {
+                child: step_id.clone(),
+                parent: motivation_id.clone(),
+                higher_importance_than_this: Some((
+                    crate::data_storage::surrealdb_layer::surreal_item::SurrealModeScope::DefaultModesWithChanges {
+                        extra_modes_included: vec![mode_id.clone()],
+                    },
+                    None,
+                )),
+            })
+            .await
+            .expect("Should send parent-child relationship command");
+
+        // Set current mode to "Test Mode".
+        let new_current_mode = NewCurrentMode::new(Some(mode_id));
+        sender
+            .send(DataLayerCommands::SetCurrentMode(new_current_mode))
+            .await
+            .expect("Should set current mode");
+
+        // Rebuild BaseData and CalculatedData so they include the new mode and current mode.
+        let surreal_tables = SurrealTables::new(&sender)
+            .await
+            .expect("Should load updated tables");
+        let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+        let calculated_data = CalculatedData::new_from_base_data(base_data);
+
+        // Build a Do Now list to mirror normal flow (this itself should not hit the TODO).
+        let do_now_list = DoNowList::new_do_now_list(calculated_data, &now);
+
+        // Now explicitly categorize the child by importance under the current mode.
+        let child_status = do_now_list
+            .get_all_items_status()
+            .get(&step_id)
+            .expect("Child status should exist");
+        let current_mode = do_now_list
+            .get_current_mode()
+            .as_ref()
+            .expect("Current mode should exist");
+
+        // Validate test preconditions: the child is active and has the motivation as a parent.
+        assert!(
+            child_status.get_item_node().has_parents(Filter::Active),
+            "Child should have an active parent"
+        );
+        let immediate_parents = child_status
+            .get_item_node()
+            .get_immediate_parents(Filter::Active)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            immediate_parents.len(),
+            1,
+            "Expected exactly one immediate parent"
+        );
+        assert_eq!(
+            immediate_parents[0].get_surreal_record_id(),
+            &motivation_id,
+            "Parent should be the motivation item"
+        );
+
+        let category = current_mode.get_category_by_importance(child_status.get_item_node());
+        match category {
+            ModeCategory::NonCore => {}
+            _ => {
+                let child_summary = child_status.get_item_node().get_item().get_summary();
+                let parent_summary = immediate_parents[0].get_item().get_summary();
+                let parent_importance_scope_debug = immediate_parents[0]
+                    .get_importance_scope()
+                    .map(|scope| format!("{scope:?}"))
+                    .unwrap_or_else(|| "None".to_string());
+                let mode_node = current_mode.get_mode();
+                let mode_name = mode_node.get_name();
+                let mode_id = mode_node.get_surreal_id();
+
+                panic!(
+                    "Expected DefaultModesWithChanges scope to treat child as NonCore.\n\
+actual category: {category:?}\n\
+child: summary='{child_summary}', id={step_id:?}\n\
+parent: summary='{parent_summary}', id={motivation_id:?}, link_importance_scope={parent_importance_scope_debug}\n\
+current_mode: name='{mode_name}', id={mode_id:?}"
+                );
+            }
+        }
 
         drop(sender);
         data_storage_join_handle
