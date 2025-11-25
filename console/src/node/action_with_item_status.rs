@@ -2,7 +2,7 @@ use std::{hash::Hash, mem};
 
 use ahash::HashMap;
 use itertools::Itertools;
-use surrealdb::opt::RecordId;
+use surrealdb::RecordId;
 
 use crate::{
     base_data::in_the_moment_priority::InTheMomentPriorityWithItemAction,

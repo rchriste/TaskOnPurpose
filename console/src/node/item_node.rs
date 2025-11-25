@@ -2,10 +2,7 @@ use std::{iter, time::Duration};
 
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
-use surrealdb::{
-    opt::RecordId,
-    sql::{Datetime, Thing},
-};
+use surrealdb::{RecordId, sql::Datetime};
 
 use crate::{
     base_data::{Visited, event::Event, item::Item, time_spent::TimeSpent},
@@ -323,7 +320,7 @@ impl<'s> ItemNode<'s> {
         self.item
     }
 
-    pub(crate) fn get_surreal_record_id(&self) -> &Thing {
+    pub(crate) fn get_surreal_record_id(&self) -> &RecordId {
         self.item.get_surreal_record_id()
     }
 
@@ -484,7 +481,7 @@ impl<'s> GrowingItemNode<'s> {
         self.item
     }
 
-    pub(crate) fn get_surreal_record_id(&self) -> &Thing {
+    pub(crate) fn get_surreal_record_id(&self) -> &RecordId {
         self.item.get_surreal_record_id()
     }
 
@@ -710,7 +707,7 @@ impl<'s> ShrinkingItemNode<'s> {
         self.item
     }
 
-    pub(crate) fn get_surreal_record_id(&self) -> &Thing {
+    pub(crate) fn get_surreal_record_id(&self) -> &RecordId {
         self.item.get_surreal_record_id()
     }
 

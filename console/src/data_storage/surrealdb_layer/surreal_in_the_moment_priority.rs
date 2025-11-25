@@ -1,9 +1,6 @@
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
-use surrealdb::{
-    opt::RecordId,
-    sql::{Datetime, Thing},
-};
+use surrealdb::{RecordId, sql::Datetime};
 
 use super::SurrealTrigger;
 
@@ -12,7 +9,7 @@ use super::SurrealTrigger;
 //it always to see if that addresses these phantom errors. Nov2023.
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Builder)]
 pub(crate) struct SurrealInTheMomentPriority {
-    pub(crate) id: Option<Thing>,
+    pub(crate) id: Option<RecordId>,
     pub(crate) choice: SurrealAction,
     pub(crate) kind: SurrealPriorityKind,
     pub(crate) not_chosen: Vec<SurrealAction>,

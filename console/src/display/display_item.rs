@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use surrealdb::opt::RecordId;
+use surrealdb::RecordId;
 
 use crate::{
     base_data::item::Item,

@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::Thing;
+use surrealdb::RecordId;
 
 use crate::new_mode::NewMode;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct SurrealMode {
-    pub(crate) id: Option<Thing>,
+    pub(crate) id: Option<RecordId>,
     pub(crate) name: String,
     pub(crate) version: u32,
-    pub(crate) parent: Option<Thing>,
+    pub(crate) parent: Option<RecordId>,
 }
 
 impl From<NewMode> for SurrealMode {

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use surrealdb::opt::RecordId;
+use surrealdb::RecordId;
 
 use crate::data_storage::surrealdb_layer::surreal_event::SurrealEvent;
 

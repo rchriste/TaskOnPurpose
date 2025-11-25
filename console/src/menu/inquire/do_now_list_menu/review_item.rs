@@ -4,7 +4,7 @@ use ahash::HashMap;
 use chrono::Utc;
 use inquire::Select;
 use itertools::Itertools;
-use surrealdb::{opt::RecordId, sql::Datetime};
+use surrealdb::{RecordId, sql::Datetime};
 use tokio::sync::mpsc::Sender;
 
 use crate::{

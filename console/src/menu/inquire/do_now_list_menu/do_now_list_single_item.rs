@@ -10,7 +10,7 @@ use ahash::{HashMap, HashSet};
 use better_term::Style;
 use chrono::{DateTime, Utc};
 use inquire::{InquireError, Select, Text};
-use surrealdb::opt::RecordId;
+use surrealdb::RecordId;
 use tokio::sync::mpsc::Sender;
 use urgency_plan::present_set_ready_and_urgency_plan_menu;
 

@@ -7,7 +7,7 @@ pub(crate) mod time_spent;
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
 use ouroboros::self_referencing;
-use surrealdb::opt::RecordId;
+use surrealdb::RecordId;
 
 use crate::data_storage::surrealdb_layer::{
     surreal_current_mode::SurrealCurrentMode,

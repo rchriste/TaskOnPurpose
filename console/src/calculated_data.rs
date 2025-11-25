@@ -11,7 +11,7 @@ use crate::{
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
 use ouroboros::self_referencing;
-use surrealdb::opt::RecordId;
+use surrealdb::RecordId;
 
 use parent_lookup::ParentLookup;
 

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::{Datetime, Thing};
+use surrealdb::{RecordId, sql::Datetime};
 
 use crate::new_time_spent::NewTimeSpent;
 
@@ -7,7 +7,7 @@ use super::{surreal_in_the_moment_priority::SurrealAction, surreal_item::Surreal
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct SurrealTimeSpent {
-    pub(crate) id: Option<Thing>,
+    pub(crate) id: Option<RecordId>,
     pub(crate) version: u32,
     pub(crate) working_on: Vec<SurrealAction>,
     pub(crate) why_in_scope: Vec<SurrealWhyInScope>,
@@ -51,7 +51,7 @@ impl SurrealTimeSpent {
 
 #[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct SurrealTimeSpentVersion0 {
-    pub(crate) id: Option<Thing>,
+    pub(crate) id: Option<RecordId>,
     pub(crate) version: u32,
     pub(crate) working_on: Vec<SurrealAction>,
     pub(crate) urgency: Option<SurrealUrgency>,

@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use ahash::HashSet;
 use chrono::{DateTime, TimeDelta, Utc};
-use surrealdb::opt::RecordId;
+use surrealdb::RecordId;
 
 use crate::{
     data_storage::surrealdb_layer::surreal_time_spent::SurrealTimeSpent,

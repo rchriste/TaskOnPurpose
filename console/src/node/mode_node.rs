@@ -1,4 +1,4 @@
-use surrealdb::sql::Thing;
+use surrealdb::RecordId;
 
 use crate::base_data::mode::Mode;
 
@@ -32,7 +32,7 @@ impl<'s> ModeNode<'s> {
         chain
     }
 
-    pub(crate) fn get_surreal_id(&self) -> &Thing {
+    pub(crate) fn get_surreal_id(&self) -> &RecordId {
         self.mode.get_surreal_id()
     }
 

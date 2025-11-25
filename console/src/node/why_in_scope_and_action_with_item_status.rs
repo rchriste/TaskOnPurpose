@@ -1,7 +1,7 @@
 use std::{hash::Hash, iter::once};
 
 use ahash::HashSet;
-use surrealdb::sql::Thing;
+use surrealdb::RecordId;
 
 use crate::data_storage::surrealdb_layer::{
     surreal_in_the_moment_priority::SurrealAction, surreal_time_spent::SurrealWhyInScope,
@@ -120,7 +120,7 @@ impl<'e> WhyInScopeAndActionWithItemStatus<'e> {
         &self.why_in_scope
     }
 
-    pub(crate) fn get_surreal_record_id(&self) -> &Thing {
+    pub(crate) fn get_surreal_record_id(&self) -> &RecordId {
         self.action.get_surreal_record_id()
     }
 

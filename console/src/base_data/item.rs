@@ -3,7 +3,7 @@ use std::time::Duration;
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
 use surrealdb::{
-    opt::RecordId,
+    RecordId,
     sql::{self, Datetime},
 };
 

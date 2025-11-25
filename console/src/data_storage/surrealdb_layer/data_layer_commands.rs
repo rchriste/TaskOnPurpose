@@ -1,9 +1,11 @@
 use chrono::Utc;
 use surrealdb::{
-    Surreal,
+    Error as SurrealError, RecordId, Surreal,
     engine::any::{Any, IntoEndpoint, connect},
-    opt::{PatchOp, RecordId},
-    sql::{Datetime, Thing},
+    err::Error as CoreError,
+    kvs::Datastore,
+    opt::PatchOp,
+    sql::Datetime,
 };
 use tokio::sync::{
     mpsc::{Receiver, Sender},
@@ -117,9 +119,30 @@ impl DataLayerCommands {
 
 pub(crate) async fn data_storage_start_and_run(
     mut data_storage_layer_receive_rx: Receiver<DataLayerCommands>,
-    endpoint: impl IntoEndpoint,
+    endpoint: &str,
 ) {
-    let db = connect(endpoint).await.unwrap();
+    let db = match connect(endpoint).await {
+        Ok(db) => db,
+        Err(err) => {
+            // If the stored data on disk is from an older SurrealDB storage format,
+            // automatically apply SurrealDB's built-in storage fixes and retry.
+            if matches!(err, SurrealError::Db(CoreError::OutdatedStorageVersion)) {
+                println!(
+                    "Detected outdated SurrealDB storage version at '{}'. Upgrading storage in place...",
+                    endpoint
+                );
+                if let Err(upgrade_err) = upgrade_surreal_storage(endpoint).await {
+                    panic!(
+                        "Failed to upgrade SurrealDB storage automatically: {:?}",
+                        upgrade_err
+                    );
+                }
+                connect(endpoint).await.unwrap()
+            } else {
+                panic!("Failed to connect to SurrealDB: {:?}", err);
+            }
+        }
+    };
     db.use_ns("OnPurpose").use_db("Russ").await.unwrap(); //TODO: "Russ" should be a parameter, maybe the username or something
 
     // let updated: Option<SurrealItem> = db.update((SurrealItem::TABLE_NAME, "5i5mkemqn0f1716v3ycw"))
@@ -166,9 +189,7 @@ pub(crate) async fn data_storage_start_and_run(
                     .content(surreal_mode.clone())
                     .await
                     .unwrap()
-                    .into_iter()
-                    .next()
-                    .unwrap();
+                    .expect("Created");
 
                 surreal_mode.id = created.id.clone();
                 assert_eq!(surreal_mode, created);
@@ -209,7 +230,7 @@ pub(crate) async fn data_storage_start_and_run(
                     })
                     .collect::<Vec<_>>();
                 let saved = db
-                    .update(parent_to_remove)
+                    .update(&parent_to_remove)
                     .content(parent.clone())
                     .await
                     .unwrap()
@@ -244,7 +265,7 @@ pub(crate) async fn data_storage_start_and_run(
 
                 item.last_reviewed = Some(new_last_reviewed);
                 let updated = db
-                    .update(record_id)
+                    .update(&record_id)
                     .content(item.clone())
                     .await
                     .unwrap()
@@ -262,8 +283,8 @@ pub(crate) async fn data_storage_start_and_run(
                 let mut item = previous_value.clone();
                 item.review_frequency = Some(surreal_frequency);
                 item.review_guidance = Some(surreal_review_guidance);
-                let updated = db
-                    .update(record_id)
+                let updated: SurrealItem = db
+                    .update(&record_id)
                     .content(item.clone())
                     .await
                     .unwrap()
@@ -275,7 +296,7 @@ pub(crate) async fn data_storage_start_and_run(
             }
             Some(DataLayerCommands::UpdateModeName(thing, new_name)) => {
                 let updated: SurrealMode = db
-                    .update(thing)
+                    .update(&thing)
                     .patch(PatchOp::replace("/name", new_name.clone()))
                     .await
                     .unwrap()
@@ -288,7 +309,7 @@ pub(crate) async fn data_storage_start_and_run(
                 new_item_type,
             )) => {
                 let updated: SurrealItem = db
-                    .update(item.clone())
+                    .update(&item)
                     .patch(PatchOp::replace(
                         "/responsibility",
                         new_responsibility.clone(),
@@ -302,7 +323,7 @@ pub(crate) async fn data_storage_start_and_run(
             }
             Some(DataLayerCommands::UpdateUrgencyPlan(record_id, new_urgency_plan)) => {
                 let updated: SurrealItem = db
-                    .update(record_id)
+                    .update(&record_id)
                     .patch(PatchOp::replace("/urgency_plan", new_urgency_plan.clone()))
                     .await
                     .unwrap()
@@ -328,23 +349,18 @@ pub(crate) async fn data_storage_start_and_run(
                     .content(priority.clone())
                     .await
                     .unwrap();
-                assert_eq!(1, updated.len());
-
-                let updated: SurrealInTheMomentPriority = updated.into_iter().next().unwrap();
+                let updated: SurrealInTheMomentPriority = updated.expect("Created");
                 priority.id = updated.id.clone();
                 assert_eq!(priority, updated);
             }
             Some(DataLayerCommands::ClearInTheMomentPriority(record_id)) => {
-                let updated: SurrealInTheMomentPriority = db
-                    .delete((SurrealInTheMomentPriority::TABLE_NAME, record_id.clone()))
-                    .await
-                    .unwrap()
-                    .unwrap();
+                let updated: SurrealInTheMomentPriority =
+                    db.delete(&record_id).await.unwrap().unwrap();
                 assert_eq!(updated.id, Some(record_id));
             }
             Some(DataLayerCommands::SetCurrentMode(new_current_mode)) => {
                 let current_mode: SurrealCurrentMode = new_current_mode.into();
-                let mut updated = db
+                let mut updated: Vec<SurrealCurrentMode> = db
                     .upsert(SurrealCurrentMode::TABLE_NAME)
                     .content(current_mode.clone())
                     .await
@@ -363,7 +379,7 @@ pub(crate) async fn data_storage_start_and_run(
             }
             Some(DataLayerCommands::TriggerEvent { event, when }) => {
                 let updated: SurrealEvent = db
-                    .update(event.clone())
+                    .update(&event)
                     .patch(PatchOp::replace("/triggered", true))
                     .patch(PatchOp::replace("/last_updated", when.clone()))
                     .await
@@ -375,7 +391,7 @@ pub(crate) async fn data_storage_start_and_run(
             }
             Some(DataLayerCommands::UntriggerEvent { event, when }) => {
                 let updated: SurrealEvent = db
-                    .update(event.clone())
+                    .update(&event)
                     .patch(PatchOp::replace("/triggered", false))
                     .patch(PatchOp::replace("/last_updated", when.clone()))
                     .await
@@ -388,6 +404,32 @@ pub(crate) async fn data_storage_start_and_run(
             None => return, //Channel closed, time to shutdown down, exit
         }
     }
+}
+
+/// Upgrade an embedded/local SurrealDB datastore to the latest storage version.
+/// This uses SurrealDB-core's `Version::fix` to apply any required on-disk migrations.
+async fn upgrade_surreal_storage(endpoint: &str) -> Result<(), CoreError> {
+    #[allow(deprecated)]
+    let ep = endpoint.into_endpoint().map_err(|e| match e {
+        SurrealError::Db(db) => db,
+        other => CoreError::Ds(other.to_string()),
+    })?;
+
+    // Match SurrealDB embedded engine behavior: TiKV uses full URL, others use parsed path.
+    let ds_endpoint = if ep.url.scheme() == "tikv" {
+        ep.url.as_str().to_owned()
+    } else {
+        ep.path.clone()
+    };
+
+    let ds = Datastore::new(&ds_endpoint).await?;
+    let ds = std::sync::Arc::new(ds);
+    let version = ds.get_version().await?;
+    if version.is_latest() {
+        return Ok(());
+    }
+    version.fix(ds).await?;
+    Ok(())
 }
 
 pub(crate) async fn load_from_surrealdb_upgrade_if_needed(db: &Surreal<Any>) -> SurrealTables {
@@ -450,8 +492,9 @@ async fn upgrade_items_table_version1_to_version2(db: &Surreal<Any>) {
                 item_old_version.version = 2;
                 item_old_version
             };
+        let item_record_id = item.id.clone().expect("In DB");
         let updated: SurrealItem = db
-            .update(item.id.clone().unwrap())
+            .update(&item_record_id)
             .content(item.clone())
             .await
             .unwrap()
@@ -464,8 +507,9 @@ async fn upgrade_items_table(db: &Surreal<Any>) {
     let a: Vec<SurrealItemOldVersion> = db.select(SurrealItemOldVersion::TABLE_NAME).await.unwrap();
     for item_old_version in a.into_iter() {
         let item: SurrealItem = item_old_version.into();
+        let item_record_id = item.id.clone().expect("In DB");
         let updated: SurrealItem = db
-            .update(item.id.clone().unwrap())
+            .update(&item_record_id)
             .content(item.clone())
             .await
             .unwrap()
@@ -478,8 +522,9 @@ async fn upgrade_time_spent_log(db: &Surreal<Any>) {
     let a: Vec<SurrealTimeSpentVersion0> = db.select(SurrealTimeSpent::TABLE_NAME).await.unwrap();
     for time_spent_old in a.into_iter() {
         let time_spent: SurrealTimeSpent = time_spent_old.into();
+        let time_spent_record_id = time_spent.id.clone().expect("In DB");
         let updated: SurrealTimeSpent = db
-            .update(time_spent.id.clone().expect("In DB"))
+            .update(&time_spent_record_id)
             .content(time_spent.clone())
             .await
             .unwrap()
@@ -495,20 +540,19 @@ async fn send_time_spent(sender: oneshot::Sender<Vec<SurrealTimeSpent>>, db: &Su
 
 async fn record_time_spent(new_time_spent: NewTimeSpent, db: &Surreal<Any>) {
     let mut new_time_spent: SurrealTimeSpent = new_time_spent.into();
-    let saved: Vec<SurrealTimeSpent> = db
+    let saved: SurrealTimeSpent = db
         .create(SurrealTimeSpent::TABLE_NAME)
         .content(new_time_spent.clone())
         .await
-        .unwrap();
-    assert_eq!(1, saved.len());
-    let saved = saved.into_iter().next().unwrap();
+        .unwrap()
+        .expect("Created");
     new_time_spent.id = saved.id.clone();
     assert_eq!(new_time_spent, saved);
 }
 
 pub(crate) async fn finish_item(finish_this: RecordId, when_finished: Datetime, db: &Surreal<Any>) {
     let updated: SurrealItem = db
-        .update(finish_this)
+        .update(&finish_this)
         .patch(PatchOp::replace("/finished", Some(when_finished.clone())))
         .await
         .unwrap()
@@ -521,22 +565,21 @@ async fn create_new_item(mut new_item: NewItem, db: &Surreal<Any>) -> SurrealIte
         match dependency {
             NewDependency::NewEvent(new_event) => {
                 let created = create_new_event(new_event.clone(), db).await;
-                *dependency = NewDependency::Existing(SurrealDependency::AfterEvent(
-                    created.id.expect("In DB"),
-                ));
+                let created_event_record_id = created.id.expect("In DB");
+                *dependency =
+                    NewDependency::Existing(SurrealDependency::AfterEvent(created_event_record_id));
             }
             NewDependency::Existing(_) => {}
         }
     }
     let mut surreal_item: SurrealItem = SurrealItem::new(new_item, vec![])
         .expect("We fix up NewDependency::NewEvent above so it will never happen here");
-    let created: Vec<SurrealItem> = db
+    let created: SurrealItem = db
         .create(SurrealItem::TABLE_NAME)
         .content(surreal_item.clone())
         .await
-        .unwrap();
-    assert!(created.len() == 1);
-    let created = created.into_iter().next().unwrap();
+        .unwrap()
+        .expect("Created");
     surreal_item.id = created.id.clone();
     assert_eq!(surreal_item, created);
 
@@ -546,9 +589,8 @@ async fn create_new_item(mut new_item: NewItem, db: &Surreal<Any>) -> SurrealIte
 async fn cover_with_a_new_item(cover_this: RecordId, cover_with: NewItem, db: &Surreal<Any>) {
     let cover_with = create_new_item(cover_with, db).await;
 
-    let cover_with: Option<Thing> = cover_with.into();
-    let cover_with = cover_with.expect("always exists the .into() wraps it in an option");
-    let new_dependency = SurrealDependency::AfterItem(cover_with);
+    let cover_with_record_id = cover_with.id.expect("In DB");
+    let new_dependency = SurrealDependency::AfterItem(cover_with_record_id);
     add_dependency(cover_this, new_dependency, db).await;
 }
 
@@ -605,7 +647,7 @@ async fn parent_item_with_existing_item(
             });
     }
     let saved = db
-        .update(parent_record_id)
+        .update(&parent_record_id)
         .content(parent.clone())
         .await
         .unwrap()
@@ -638,9 +680,9 @@ async fn parent_new_item_with_an_existing_child_item(
         match dependency {
             NewDependency::NewEvent(new_event) => {
                 let created = create_new_event(new_event.clone(), db).await;
-                *dependency = NewDependency::Existing(SurrealDependency::AfterEvent(
-                    created.id.expect("In DB"),
-                ));
+                let created_event_record_id = created.id.expect("In DB");
+                *dependency =
+                    NewDependency::Existing(SurrealDependency::AfterEvent(created_event_record_id));
             }
             NewDependency::Existing(_) => {}
         }
@@ -654,13 +696,12 @@ async fn parent_new_item_with_an_existing_child_item(
     let mut parent_surreal_item =
         SurrealItem::new(parent_new_item, smaller_items_in_priority_order)
             .expect("We deal with new events above so it will never happen here");
-    let created = db
+    let created: SurrealItem = db
         .create(SurrealItem::TABLE_NAME)
         .content(parent_surreal_item.clone())
         .await
-        .unwrap();
-    assert_eq!(1, created.len());
-    let created: SurrealItem = created.into_iter().next().unwrap();
+        .unwrap()
+        .expect("Created");
     parent_surreal_item.id = created.id.clone();
     assert_eq!(parent_surreal_item, created);
 }
@@ -679,7 +720,7 @@ async fn add_dependency(record_id: RecordId, new_dependency: SurrealDependency, 
         surreal_item.dependencies.push(new_dependency);
 
         let updated: SurrealItem = db
-            .update(record_id)
+            .update(&record_id)
             .content(surreal_item.clone())
             .await
             .unwrap()
@@ -693,7 +734,7 @@ async fn remove_dependency(record_id: RecordId, to_remove: SurrealDependency, db
     surreal_item.dependencies.retain(|x| x != &to_remove);
 
     let update = db
-        .update(record_id)
+        .update(&record_id)
         .content(surreal_item.clone())
         .await
         .unwrap()
@@ -710,13 +751,12 @@ async fn add_dependency_new_event(record_id: RecordId, new_event: NewEvent, db: 
 
 async fn create_new_event(new_event: NewEvent, db: &Surreal<Any>) -> SurrealEvent {
     let event: SurrealEvent = new_event.into();
-    let created = db
+    let created: SurrealEvent = db
         .create(SurrealEvent::TABLE_NAME)
         .content(event.clone())
         .await
-        .unwrap();
-    assert_eq!(1, created.len());
-    let created: SurrealEvent = created.into_iter().next().unwrap();
+        .unwrap()
+        .expect("Created");
     assert_eq!(created.last_updated, event.last_updated);
     assert_eq!(created.summary, event.summary);
     created
@@ -724,7 +764,7 @@ async fn create_new_event(new_event: NewEvent, db: &Surreal<Any>) -> SurrealEven
 
 async fn update_item_summary(item_to_update: RecordId, new_summary: String, db: &Surreal<Any>) {
     let updated: SurrealItem = db
-        .update(item_to_update.clone())
+        .update(&item_to_update)
         .patch(PatchOp::replace("/summary", new_summary.clone()))
         .await
         .unwrap()

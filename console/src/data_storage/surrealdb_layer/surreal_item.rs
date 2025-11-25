@@ -10,8 +10,8 @@ use chrono::{DateTime, TimeDelta, Utc};
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
 use surrealdb::{
-    opt::RecordId,
-    sql::{Datetime, Duration, Thing},
+    RecordId,
+    sql::{Datetime, Duration},
 };
 
 use crate::{
@@ -27,7 +27,7 @@ use super::SurrealTrigger;
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Builder)]
 #[builder(setter(into))]
 pub(crate) struct SurrealItem {
-    pub(crate) id: Option<Thing>,
+    pub(crate) id: Option<RecordId>,
     pub(crate) summary: String,
 
     #[cfg_attr(test, builder(default = "2"))]
@@ -71,7 +71,7 @@ pub(crate) struct SurrealItem {
     pub(crate) urgency_plan: Option<SurrealUrgencyPlan>,
 }
 
-impl From<SurrealItem> for Option<Thing> {
+impl From<SurrealItem> for Option<RecordId> {
     fn from(value: SurrealItem) -> Self {
         value.id
     }
@@ -383,7 +383,7 @@ pub(crate) enum SurrealLap {
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
 pub(crate) enum SurrealOrderedSubItem {
-    SubItem { surreal_item_id: Thing },
+    SubItem { surreal_item_id: RecordId },
     //This could be expanded to state multiple items that are at the same priority meaning you would go with lap count or something else to determine which to work on first.
 }
 
@@ -488,7 +488,7 @@ impl Hash for SurrealUrgency {
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Builder)]
 #[builder(setter(into))]
 pub(crate) struct SurrealItemOldVersion {
-    pub(crate) id: Option<Thing>,
+    pub(crate) id: Option<RecordId>,
     pub(crate) summary: String,
 
     #[cfg_attr(test, builder(default))]

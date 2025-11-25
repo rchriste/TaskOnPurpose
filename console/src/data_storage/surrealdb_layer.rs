@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use surrealdb::{
-    opt::RecordId,
+    RecordId,
     sql::{Datetime, Duration},
 };
 

@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 use ahash::HashSet;
-use surrealdb::sql::Thing;
+use surrealdb::RecordId;
 
 use crate::{
     data_storage::surrealdb_layer::{
@@ -74,7 +74,7 @@ impl<'s> DisplayWhyInScopeAndActionWithItemStatus<'s> {
         self.item.is_in_scope_for_importance()
     }
 
-    pub(crate) fn get_surreal_record_id(&self) -> &Thing {
+    pub(crate) fn get_surreal_record_id(&self) -> &RecordId {
         self.item.get_surreal_record_id()
     }
 

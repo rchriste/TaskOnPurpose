@@ -1,4 +1,4 @@
-use surrealdb::sql::Thing;
+use surrealdb::RecordId;
 
 use crate::data_storage::surrealdb_layer::surreal_mode::SurrealMode;
 
@@ -15,11 +15,11 @@ impl<'s> Mode<'s> {
         &self.surreal_mode.name
     }
 
-    pub(crate) fn get_parent(&self) -> &'s Option<Thing> {
+    pub(crate) fn get_parent(&self) -> &'s Option<RecordId> {
         &self.surreal_mode.parent
     }
 
-    pub(crate) fn get_surreal_id(&self) -> &'s Thing {
+    pub(crate) fn get_surreal_id(&self) -> &'s RecordId {
         self.surreal_mode
             .id
             .as_ref()

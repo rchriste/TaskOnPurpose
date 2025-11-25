@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::Thing;
+use surrealdb::RecordId;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct SurrealCurrentMode {
-    pub(crate) id: Option<Thing>,
+    pub(crate) id: Option<RecordId>,
     pub(crate) version: u32,
     pub(crate) urgency_in_scope: Vec<SurrealSelectedSingleMode>,
     pub(crate) importance_in_scope: Vec<SurrealSelectedSingleMode>,
