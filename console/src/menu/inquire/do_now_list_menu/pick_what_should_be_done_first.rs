@@ -28,6 +28,8 @@ use crate::{
     systems::do_now_list::DoNowList,
 };
 
+use crate::menu::inquire::default_select_page_size;
+
 use super::{
     WhyInScopeAndActionWithItemStatus, do_now_list_single_item::urgency_plan::prompt_for_triggers,
 };
@@ -74,7 +76,7 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
 
     let starting_choice = rand::rng().random_range(0..display_choices.len());
     let choice = Select::new("Pick a priority?", display_choices)
-        .with_page_size(8)
+        .with_page_size(default_select_page_size())
         .with_starting_cursor(starting_choice)
         .prompt();
     let choice = match choice {
@@ -100,6 +102,7 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
             HighestOrLowest::FinishOrRetireItem,
         ],
     )
+    .with_page_size(default_select_page_size())
     .prompt()
     {
         Ok(highest_or_lowest) => highest_or_lowest,
@@ -221,7 +224,7 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
         })
         .expect("Choice just selected will always be found");
     let other_items = MultiSelect::new("What other items should be affected?", other_items)
-        .with_page_size(8)
+        .with_page_size(default_select_page_size())
         .with_starting_cursor(starting_position)
         .prompt();
 

@@ -2,12 +2,30 @@ use fundu::{CustomDurationParser, CustomTimeUnit, SaturatingInto, TimeUnit};
 use lazy_static::lazy_static;
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveTime, TimeZone};
+use crossterm::terminal;
 use regex::{Regex, RegexBuilder};
 
 pub(crate) mod back_menu;
 pub(crate) mod do_now_list_menu;
 pub(crate) mod select_higher_importance_than_this;
 pub(crate) mod update_item_summary;
+
+/// Default page size for `inquire::Select` and `inquire::MultiSelect`.
+///
+/// We aim for roughly half of the visible terminal rows, but never less than 10.
+/// If terminal size can't be detected, we fall back to 10.
+#[must_use]
+pub(crate) fn default_select_page_size() -> usize {
+    const MIN_PAGE_SIZE: usize = 10;
+
+    match terminal::size() {
+        Ok((_cols, rows)) => {
+            let half_rows = (rows as usize) / 2;
+            std::cmp::max(MIN_PAGE_SIZE, half_rows)
+        }
+        Err(_) => MIN_PAGE_SIZE,
+    }
+}
 
 #[must_use]
 fn parse_exact_or_relative_datetime_help_string() -> &'static str {

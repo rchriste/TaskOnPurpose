@@ -8,7 +8,7 @@ use crate::{
         data_layer_commands::DataLayerCommands,
         surreal_current_mode::{NewCurrentMode, SurrealSelectedSingleMode},
     },
-    menu::inquire::do_now_list_menu::present_normal_do_now_list_menu,
+    menu::inquire::{default_select_page_size, do_now_list_menu::present_normal_do_now_list_menu},
     systems::do_now_list::current_mode::{CurrentMode, SelectedSingleMode},
 };
 
@@ -49,6 +49,7 @@ pub(crate) async fn present_change_mode_menu(
     }
     let selections =
         inquire::MultiSelect::new("What Motivational Purposes to show for Importance", choices)
+            .with_page_size(default_select_page_size())
             .with_default(&default)
             .prompt();
     let importance_choice = match selections {
@@ -89,6 +90,7 @@ pub(crate) async fn present_change_mode_menu(
 
     let selections =
         inquire::MultiSelect::new("What Motivational Purposes to show for Urgency", choices)
+            .with_page_size(default_select_page_size())
             .with_default(&default)
             .prompt();
     let urgency_choice = match selections {

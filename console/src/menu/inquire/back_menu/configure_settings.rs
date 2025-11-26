@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use inquire::{InquireError, Select, Text};
+use crate::menu::inquire::default_select_page_size;
 
 enum ConfigureOptions {
     Help,
@@ -17,7 +18,9 @@ impl Display for ConfigureOptions {
 pub(crate) async fn configure_settings() -> Result<(), ()> {
     let list = vec![ConfigureOptions::Help];
 
-    let selection = Select::new("What to configure?", list).prompt();
+    let selection = Select::new("What to configure?", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(ConfigureOptions::Help) => {
             print_help();

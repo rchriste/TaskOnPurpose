@@ -18,6 +18,8 @@ use crate::{
     systems::do_now_list::DoNowList,
 };
 
+use crate::menu::inquire::default_select_page_size;
+
 #[derive(Debug)]
 enum SearchMenuUrgencyItem<'e> {
     AllMotivations {
@@ -628,7 +630,9 @@ pub(crate) async fn present_search_menu(
     }
 
     println!();
-    let selection = Select::new("Select an item to view", list).prompt();
+    let selection = Select::new("Select an item to view", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
 
     match selection {
         Ok(SearchMenuUrgencyItem::MoreUrgentThanAnythingIncludingScheduled {
@@ -679,6 +683,7 @@ pub(crate) async fn present_search_menu(
                     .expect("len() <= 1 so first() should be Some")
             } else {
                 Select::new("Select an item to view", list)
+                    .with_page_size(default_select_page_size())
                     .prompt()
                     .unwrap()
             };
@@ -689,6 +694,7 @@ pub(crate) async fn present_search_menu(
                 .collect::<Vec<_>>();
 
             let selection = Select::new("Select an item to view", list)
+                .with_page_size(default_select_page_size())
                 .prompt()
                 .unwrap();
             match selection {
@@ -738,6 +744,7 @@ pub(crate) async fn present_search_menu(
                     .expect("len() <= 1 && !is_empty() so first() should be Some")
             } else {
                 Select::new("Select an item to view", list)
+                    .with_page_size(default_select_page_size())
                     .prompt()
                     .unwrap()
             };
@@ -748,6 +755,7 @@ pub(crate) async fn present_search_menu(
                 .collect::<Vec<_>>();
 
             let selection = Select::new("Select an item to view", list)
+                .with_page_size(default_select_page_size())
                 .prompt()
                 .unwrap();
 
@@ -783,7 +791,9 @@ pub(crate) async fn present_search_menu(
                 .map(|x| SearchMenuUrgencyItem::Item { item: x })
                 .collect::<Vec<_>>();
 
-            let selection = Select::new("Select an item to view", list).prompt();
+            let selection = Select::new("Select an item to view", list)
+                .with_page_size(default_select_page_size())
+                .prompt();
 
             match selection {
                 Ok(SearchMenuUrgencyItem::Item { item }) => {

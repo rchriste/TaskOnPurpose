@@ -17,6 +17,7 @@ use crate::{
         display_item_node::DisplayFormat,
     },
     menu::inquire::{
+        default_select_page_size,
         do_now_list_menu::do_now_list_single_item::state_a_smaller_action::{
             SelectAnItemSortingOrder, select_an_item,
         },
@@ -149,6 +150,7 @@ pub(crate) async fn prompt_for_dependencies(
                         "Do you want to keep or remove this dependency?",
                         vec![RemoveOrKeep::Keep, RemoveOrKeep::Remove],
                     )
+                    .with_page_size(default_select_page_size())
                     .prompt()
                     .unwrap();
                     match selection {
@@ -183,7 +185,9 @@ pub(crate) async fn prompt_for_dependencies(
     list.push(ReadySelection::AfterEvent);
 
     println!();
-    let ready = Select::new("When will this item be ready to work on?", list).prompt();
+    let ready = Select::new("When will this item be ready to work on?", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match ready {
         Ok(ReadySelection::Now | ReadySelection::NothingElse) => {
             //do nothing
@@ -264,6 +268,7 @@ pub(crate) async fn prompt_for_dependencies(
                 "Select an event that must happen first or create a new event",
                 list,
             )
+            .with_page_size(default_select_page_size())
             .prompt();
             match selected {
                 Ok(EventSelection::NewEvent) => {
@@ -320,6 +325,7 @@ pub(crate) async fn prompt_for_urgency_plan(
             UrgencyPlanSelection::WillEscalate,
         ],
     )
+    .with_page_size(default_select_page_size())
     .prompt()
     .unwrap();
 
@@ -386,6 +392,7 @@ pub(crate) async fn prompt_for_triggers(
             "Is there anything else that should also trigger?",
             vec![AddAnotherTrigger::AllDone, AddAnotherTrigger::AddAnother],
         )
+        .with_page_size(default_select_page_size())
         .prompt()
         .unwrap();
         match more {
@@ -409,6 +416,7 @@ async fn prompt_for_trigger(
             TriggerType::LoggedAmountOfTimeSpent,
         ],
     )
+    .with_page_size(default_select_page_size())
     .prompt()
     .unwrap();
 
@@ -521,6 +529,7 @@ async fn prompt_for_items_in_scope(
             ItemInScopeSelection::Exclude,
         ],
     )
+    .with_page_size(default_select_page_size())
     .prompt()
     .unwrap();
 
@@ -590,6 +599,7 @@ async fn prompt_for_items_to_select(calculated_data: &CalculatedData) -> Vec<&It
             "Do you want to select another item?",
             vec![SelectAnother::SelectAnother, SelectAnother::Done],
         )
+        .with_page_size(default_select_page_size())
         .prompt()
         .unwrap();
         match select_another {
@@ -640,6 +650,7 @@ fn prompt_for_urgency() -> SurrealUrgency {
         ],
     )
     .with_starting_cursor(6)
+    .with_page_size(default_select_page_size())
     .prompt()
     .unwrap();
     match urgency {
@@ -680,7 +691,9 @@ pub(crate) enum StartWhen {
 
 fn prompt_to_schedule() -> Result<Option<SurrealScheduled>, ()> {
     let start_when = vec![StartWhenOption::ExactTime, StartWhenOption::TimeRange];
-    let start_when = Select::new("When do you want to start this item?", start_when).prompt();
+    let start_when = Select::new("When do you want to start this item?", start_when)
+        .with_page_size(default_select_page_size())
+        .prompt();
     let start_when = match start_when {
         Ok(StartWhenOption::ExactTime) => loop {
             let exact_start =

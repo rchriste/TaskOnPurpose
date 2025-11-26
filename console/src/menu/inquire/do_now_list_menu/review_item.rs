@@ -19,6 +19,7 @@ use crate::{
         display_item_status::DisplayItemStatus, display_urgency_plan::DisplayUrgencyPlan,
     },
     menu::inquire::{
+        default_select_page_size,
         do_now_list_menu::do_now_list_single_item::{
             give_this_item_a_parent::give_this_item_a_parent,
             state_a_smaller_action::state_a_smaller_action,
@@ -248,6 +249,7 @@ async fn present_review_item_menu_internal<'a>(
 ) -> Result<(), ()> {
     let choices = ReviewItemMenuChoices::make_list(selected_item);
     let selected = Select::new("What would you like to do with this item?", choices)
+        .with_page_size(default_select_page_size())
         .prompt()
         .unwrap();
 

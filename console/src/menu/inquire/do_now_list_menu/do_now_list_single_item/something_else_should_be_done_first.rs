@@ -8,6 +8,8 @@ use crate::{
     display::display_item::DisplayItem,
 };
 
+use crate::menu::inquire::default_select_page_size;
+
 use super::ItemTypeSelection;
 
 pub(crate) async fn something_else_should_be_done_first(
@@ -25,7 +27,9 @@ pub(crate) async fn something_else_should_be_done_first(
         .copied()
         .map(DisplayItem::new)
         .collect::<Vec<_>>();
-    let selection = Select::new("Select from the below list|", list).prompt();
+    let selection = Select::new("Select from the below list|", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(should_be_done_first) => {
             send_to_data_storage_layer
@@ -53,7 +57,9 @@ pub(crate) async fn something_else_should_be_done_first_new_item(
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     let list = ItemTypeSelection::create_list();
-    let selection = Select::new("Select from the below list|", list).prompt();
+    let selection = Select::new("Select from the below list|", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(ItemTypeSelection::NormalHelp) => {
             ItemTypeSelection::print_normal_help();

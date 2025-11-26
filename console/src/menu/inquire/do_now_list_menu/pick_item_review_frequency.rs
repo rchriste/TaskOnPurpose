@@ -8,6 +8,7 @@ use crate::{
         data_layer_commands::DataLayerCommands,
         surreal_item::{SurrealFrequency, SurrealReviewGuidance},
     },
+    menu::inquire::default_select_page_size,
     node::item_status::ItemStatus,
 };
 
@@ -105,7 +106,7 @@ pub(crate) async fn present_pick_item_review_frequency_menu(
         "How often should you review this item?",
         Frequency::make_list(),
     )
-    .with_page_size(10)
+    .with_page_size(default_select_page_size())
     .prompt()
     .unwrap();
 
@@ -129,6 +130,7 @@ pub(crate) async fn present_pick_item_review_frequency_menu(
         "Should children items be reviewed with this item?",
         ReviewGuidance::make_list(),
     )
+    .with_page_size(default_select_page_size())
     .prompt()
     .unwrap();
 

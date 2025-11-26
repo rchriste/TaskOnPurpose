@@ -23,8 +23,8 @@ use crate::{
         display_item_status::DisplayItemStatus,
     },
     menu::inquire::{
-        back_menu::configure_modes::configure_modes, parse_exact_or_relative_datetime,
-        parse_exact_or_relative_datetime_help_string,
+        back_menu::configure_modes::configure_modes, default_select_page_size,
+        parse_exact_or_relative_datetime, parse_exact_or_relative_datetime_help_string,
     },
     new_item::NewItem,
     node::{
@@ -90,7 +90,9 @@ pub(crate) async fn present_back_menu(
     let back_menu = TopMenuSelection::make_list();
 
     println!();
-    let selection = Select::new("Select from the below list|", back_menu).prompt();
+    let selection = Select::new("Select from the below list|", back_menu)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(TopMenuSelection::Reflection) => present_reflection(send_to_data_storage_layer).await,
         Ok(TopMenuSelection::ViewDoNowList) => {
@@ -154,7 +156,9 @@ async fn clear_in_the_moment_priorities(
         ClearInTheMomentPrioritiesChoice::ClearAll,
         ClearInTheMomentPrioritiesChoice::Back,
     ];
-    let selection = Select::new("Select an action...", menu_choices).prompt();
+    let selection = Select::new("Select an action...", menu_choices)
+        .with_page_size(default_select_page_size())
+        .prompt();
 
     match selection {
         Ok(ClearInTheMomentPrioritiesChoice::ClearAll) => {
@@ -232,7 +236,9 @@ async fn view_priorities(send_to_data_storage_layer: &Sender<DataLayerCommands>)
         .collect::<Vec<_>>();
 
     println!();
-    let selection = Select::new("Select a priority to view...", list).prompt();
+    let selection = Select::new("Select a priority to view...", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(display_item_status) => {
             view_priorities_of_item_status(
@@ -273,7 +279,7 @@ async fn view_priorities_of_item_status(
         })
         .collect();
     let selection = Select::new("Select a child to view...", list)
-        .with_page_size(8)
+        .with_page_size(default_select_page_size())
         .prompt();
     match selection {
         Ok(display_priority) => {
@@ -352,7 +358,9 @@ async fn view_priorities_single_item_no_children(
         ViewPrioritiesSingleItemNoChildrenChoice::EditSummary,
         ViewPrioritiesSingleItemNoChildrenChoice::Finish,
     ];
-    let selection = Select::new("Select an action...", choices).prompt();
+    let selection = Select::new("Select an action...", choices)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(ViewPrioritiesSingleItemNoChildrenChoice::Finish) => {
             let now = Utc::now();
@@ -904,7 +912,7 @@ async fn debug_view_all_items(
     let list = DebugViewItem::make_list(&item_nodes);
 
     let selection = Select::new("Select an item to show the debug view of...", list)
-        .with_page_size(8)
+        .with_page_size(default_select_page_size())
         .prompt();
     match selection {
         Ok(DebugViewItem::Item(item)) => {

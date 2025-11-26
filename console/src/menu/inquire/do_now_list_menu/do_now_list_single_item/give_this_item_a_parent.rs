@@ -18,6 +18,8 @@ use crate::{
     node::{Filter, item_node::ItemNode},
 };
 
+use crate::menu::inquire::default_select_page_size;
+
 use super::DisplayFormat;
 
 enum ParentItem<'e> {
@@ -91,7 +93,7 @@ pub(crate) async fn give_this_item_a_parent(
         "Type to search, select an existing reason, or create a new item|",
         list,
     )
-    .with_page_size(8)
+    .with_page_size(default_select_page_size())
     .prompt();
     match selection {
         Ok(ParentItem::FinishItem) => {
@@ -145,7 +147,9 @@ async fn parent_to_a_goal_or_motivation_new_goal_or_motivation(
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     let list = ItemTypeSelection::create_list();
-    let selection = Select::new("Select from the below list|", list).prompt();
+    let selection = Select::new("Select from the below list|", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(ItemTypeSelection::NormalHelp) => {
             ItemTypeSelection::print_normal_help();

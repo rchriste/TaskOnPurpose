@@ -22,6 +22,7 @@ use pick_item_review_frequency::present_pick_item_review_frequency_menu;
 use pick_what_should_be_done_first::present_pick_what_should_be_done_first_menu;
 use review_item::present_review_item_menu;
 use search::present_search_menu;
+use crate::menu::inquire::default_select_page_size;
 use surrealdb::RecordId;
 use tokio::sync::mpsc::Sender;
 
@@ -302,7 +303,7 @@ pub(crate) async fn present_do_now_list_menu(
         inquire_do_now_list,
     )
     .with_starting_cursor(starting_cursor)
-    .with_page_size(10)
+    .with_page_size(default_select_page_size())
     .prompt();
 
     match selected {
@@ -321,7 +322,9 @@ pub(crate) async fn present_do_now_list_menu(
                 waiting_on.into_iter().map(EventSelection::Event)
             )
             .collect::<Vec<_>>();
-            let selected = Select::new("Select the event that just happened|", list).prompt();
+            let selected = Select::new("Select the event that just happened|", list)
+                .with_page_size(default_select_page_size())
+                .prompt();
             match selected {
                 Ok(EventSelection::Event(event)) => {
                     let items_waiting_on_this_event = do_now_list
@@ -353,6 +356,7 @@ pub(crate) async fn present_do_now_list_menu(
                         "Clear event or select an item that is dependent on this event|",
                         list,
                     )
+                    .with_page_size(default_select_page_size())
                     .prompt();
                     match selected {
                         Ok(EventTrigger::TriggerEvent {
@@ -520,7 +524,9 @@ pub(crate) fn present_do_now_help() -> Result<(), ()> {
         DoNowHelpChoices::Workarounds,
         DoNowHelpChoices::ReturnToDoNowList,
     ];
-    let selected = Select::new("Select from the below list|", choices).prompt();
+    let selected = Select::new("Select from the below list|", choices)
+        .with_page_size(default_select_page_size())
+        .prompt();
 
     match selected {
         Ok(DoNowHelpChoices::GettingStarted) => {

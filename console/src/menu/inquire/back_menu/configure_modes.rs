@@ -16,6 +16,8 @@ use crate::{
     node::mode_node::ModeNode,
 };
 
+use crate::menu::inquire::default_select_page_size;
+
 use super::{DataLayerCommands, DisplayFormat};
 
 enum ConfigureModesOptions<'e> {
@@ -113,7 +115,9 @@ pub(crate) async fn configure_modes(
 
     println!();
 
-    let selection = Select::new("Select a mode", options).prompt();
+    let selection = Select::new("Select a mode", options)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(ConfigureModesOptions::Add) => {
             let name = inquire::Text::new("Enter the name of the new mode").prompt();
@@ -145,7 +149,9 @@ pub(crate) async fn configure_modes(
             ];
 
             println!();
-            let selection = Select::new("Select an option", options).prompt();
+            let selection = Select::new("Select an option", options)
+                .with_page_size(default_select_page_size())
+                .prompt();
             match selection {
                 Ok(ConfigureModesOptionsSelected::AddWithParent(parent)) => {
                     let name = inquire::Text::new("Enter the name of the new mode").prompt();

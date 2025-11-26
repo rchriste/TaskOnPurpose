@@ -16,6 +16,8 @@ use crate::{
     node::{Filter, item_node::ItemNode, item_status::ItemStatus},
 };
 
+use crate::menu::inquire::default_select_page_size;
+
 use super::{
     DisplayFormat, ItemTypeSelection,
     new_item::NewDependency,
@@ -94,7 +96,7 @@ pub(crate) async fn select_an_item<'a>(
         "Select an existing item from this list of all items or create a new item, type to search|",
         list,
     )
-    .with_page_size(8)
+    .with_page_size(default_select_page_size())
     .prompt();
     match selection {
         Ok(ChildItem::CreateNewItem) => Ok(None),
@@ -168,7 +170,9 @@ pub(crate) async fn state_a_child_action_new_item(
 ) -> Result<(), ()> {
     let list = ItemTypeSelection::create_list();
 
-    let selection = Select::new("Select from the below list|", list).prompt();
+    let selection = Select::new("Select from the below list|", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(ItemTypeSelection::NormalHelp) => {
             ItemTypeSelection::print_normal_help();

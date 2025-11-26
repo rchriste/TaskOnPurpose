@@ -13,7 +13,8 @@ use crate::{
     },
     display::display_duration::DisplayDuration,
     menu::inquire::{
-        parse_exact_or_relative_datetime, parse_exact_or_relative_datetime_help_string,
+        default_select_page_size, parse_exact_or_relative_datetime,
+        parse_exact_or_relative_datetime_help_string,
     },
     new_time_spent::NewTimeSpent,
     node::{Filter, item_status::ItemStatus, why_in_scope_and_action_with_item_status::ToSurreal},
@@ -167,6 +168,7 @@ async fn ask_when_started_and_stopped(
             "When did you start working on this item?",
             started_when.clone(),
         )
+        .with_page_size(default_select_page_size())
         .prompt();
         let when_started = match started_when {
             Ok(StartedWhen::WhenLastItemFinished(when_last_time_finished)) => {
@@ -204,8 +206,12 @@ async fn ask_when_started_and_stopped(
         };
         println!("When started: {:?}", when_started);
         let stopped_when = vec![StoppedWhen::Now, StoppedWhen::ManualTime];
-        let stopped_when =
-            Select::new("When did you stop working on this item?", stopped_when).prompt();
+        let stopped_when = Select::new(
+            "When did you stop working on this item?",
+            stopped_when,
+        )
+        .with_page_size(default_select_page_size())
+        .prompt();
         let when_stopped = match stopped_when {
             Ok(StoppedWhen::Now) => Local::now(),
             Ok(StoppedWhen::ManualTime) => loop {
@@ -246,6 +252,7 @@ async fn ask_when_started_and_stopped(
                 ),
                 vec![YesOrNo::Yes, YesOrNo::No],
             )
+            .with_page_size(default_select_page_size())
             .prompt();
             match confirm {
                 Ok(YesOrNo::Yes) => {}
@@ -301,7 +308,9 @@ impl Display for Dedication {
 
 fn ask_about_dedication() -> Result<Option<SurrealDedication>, ()> {
     let dedication = vec![Dedication::Primary, Dedication::Background];
-    let dedication = Select::new("What is the dedication of this time spent?", dedication).prompt();
+    let dedication = Select::new("What is the dedication of this time spent?", dedication)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match dedication {
         Ok(Dedication::Primary) => Ok(Some(SurrealDedication::PrimaryTask)),
         Ok(Dedication::Background) => Ok(Some(SurrealDedication::BackgroundTask)),

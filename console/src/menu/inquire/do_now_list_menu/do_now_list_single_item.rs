@@ -30,6 +30,7 @@ use crate::{
         display_urgency_plan::DisplayUrgency,
     },
     menu::inquire::{
+        default_select_page_size,
         back_menu::capture,
         do_now_list_menu::{
             do_now_list_single_item::{
@@ -221,7 +222,7 @@ pub(crate) async fn present_do_now_list_item_selected(
     );
 
     let selection = Select::new("Select from the below list|", list)
-        .with_page_size(16)
+        .with_page_size(default_select_page_size())
         .prompt();
 
     match selection {
@@ -584,7 +585,9 @@ async fn finish_do_now_item(
             .map(|x| x.get_item())
             .collect::<Vec<_>>(),
     );
-    let selection = Select::new("Select from the below list|", list).prompt();
+    let selection = Select::new("Select from the below list|", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
 
     match selection {
         Ok(FinishSelection::CaptureNewItem) => capture(send_to_data_storage_layer).await,
@@ -673,7 +676,7 @@ async fn parent_to_item(
     let list = DisplayItemNode::make_list(&item_nodes, Filter::Active, DisplayFormat::SingleLine);
 
     let selection = Select::new("Type to Search or Press Esc to enter a new one", list)
-        .with_page_size(8)
+        .with_page_size(default_select_page_size())
         .prompt();
     match selection {
         Ok(display_item) => {
@@ -841,7 +844,9 @@ pub(crate) async fn parent_to_new_item(
 ) -> Result<(), ()> {
     let list = ItemTypeSelection::create_list();
 
-    let selection = Select::new("Select from the below list|", list).prompt();
+    let selection = Select::new("Select from the below list|", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(ItemTypeSelection::NormalHelp) => {
             ItemTypeSelection::print_normal_help();
@@ -870,7 +875,9 @@ pub(crate) async fn declare_item_type(
 ) -> Result<(), ()> {
     let list = ItemTypeSelection::create_list();
 
-    let selection = Select::new("Select from the below list|", list).prompt();
+    let selection = Select::new("Select from the below list|", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(ItemTypeSelection::Action) => {
             send_to_data_storage_layer
@@ -974,7 +981,9 @@ pub(crate) async fn present_is_person_or_group_around_menu(
 ) -> Result<(), ()> {
     let list = IsAPersonOrGroupAroundSelection::create_list();
 
-    let selection = Select::new("Select from the below list|", list).prompt();
+    let selection = Select::new("Select from the below list|", list)
+        .with_page_size(default_select_page_size())
+        .prompt();
     match selection {
         Ok(IsAPersonOrGroupAroundSelection::Yes) => {
             send_to_data_storage_layer

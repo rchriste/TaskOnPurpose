@@ -3,7 +3,10 @@ use std::fmt::Display;
 use inquire::Select;
 use surrealdb::RecordId;
 
-use crate::{base_data::item::Item, display::display_item::DisplayItem};
+use crate::{
+    base_data::item::Item, display::display_item::DisplayItem,
+    menu::inquire::default_select_page_size,
+};
 
 #[derive(Debug)]
 pub(crate) enum HigherImportanceThan<'e> {
@@ -51,6 +54,7 @@ pub(crate) fn select_higher_importance_than_this(
     println!();
     let selected = Select::new("Select higher importance than this|", list)
         .with_starting_cursor(starting_position)
+        .with_page_size(default_select_page_size())
         .prompt()
         .unwrap();
     match selected {
