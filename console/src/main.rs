@@ -30,6 +30,9 @@ struct CliSurrealConfig {
     endpoint: String,
     namespace: String,
     username: String,
+    auth_username: Option<String>,
+    auth_password: Option<String>,
+    auth_level: Option<String>,
 }
 
 fn print_help_and_exit() -> ! {
@@ -37,17 +40,25 @@ fn print_help_and_exit() -> ! {
         r#"Task On Purpose
 
 Usage:
-  taskonpurpose [inmemorydb] [--surreal-endpoint <endpoint>] [--namespace <ns>] [--username <user>]
+  taskonpurpose [inmemorydb]
+    [--surreal-endpoint <endpoint>]
+    [--namespace <ns>]
+    [--username <user>]
+    [--surreal-auth-username <user> --surreal-auth-password <pass> [--surreal-auth-level <root|ns|db>]]
 
 Options:
   --surreal-endpoint, -e   SurrealDB connection string/endpoint (e.g. mem://, file://..., ws://...)
   --namespace, -n          SurrealDB namespace (default: TaskOnPurpose)
   --username, --user, -u   Username to use as the SurrealDB *database name* (default: OS user)
+  --surreal-auth-username  SurrealDB login username (optional; used for remote auth)
+  --surreal-auth-password  SurrealDB login password (optional; used for remote auth)
+  --surreal-auth-level     SurrealDB auth level: root | ns | db (default: root)
   --help, -h               Show this help
 
 Notes:
   - The SurrealDB database name is derived from the provided username (this replaces the previous hardcoded \"Russ\").
   - On startup, if namespace \"TaskOnPurpose\" is empty but legacy namespace \"OnPurpose\" has data, the data is copied into \"TaskOnPurpose\".
+  - If connecting to a remote SurrealDB with IAM enabled, you likely need to pass `--surreal-auth-username/--surreal-auth-password`.
 "#
     );
     std::process::exit(0);
@@ -70,6 +81,9 @@ fn parse_cli(args: &[String]) -> CliSurrealConfig {
 
     let mut namespace = "TaskOnPurpose".to_string();
     let mut username = default_os_username();
+    let mut auth_username: Option<String> = None;
+    let mut auth_password: Option<String> = None;
+    let mut auth_level: Option<String> = None;
 
     let mut i = 1usize;
     while i < args.len() {
@@ -96,6 +110,30 @@ fn parse_cli(args: &[String]) -> CliSurrealConfig {
                     .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
                     .to_string();
             }
+            "--surreal-auth-username" | "--auth-username" | "--surreal-user" => {
+                i += 1;
+                auth_username = Some(
+                    args.get(i)
+                        .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                        .to_string(),
+                );
+            }
+            "--surreal-auth-password" | "--auth-password" | "--surreal-pass" => {
+                i += 1;
+                auth_password = Some(
+                    args.get(i)
+                        .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                        .to_string(),
+                );
+            }
+            "--surreal-auth-level" | "--auth-level" => {
+                i += 1;
+                auth_level = Some(
+                    args.get(i)
+                        .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                        .to_string(),
+                );
+            }
             // Ignore positional args we already handle (like `inmemorydb`)
             _ => {}
         }
@@ -106,6 +144,9 @@ fn parse_cli(args: &[String]) -> CliSurrealConfig {
         endpoint,
         namespace,
         username,
+        auth_username,
+        auth_password,
+        auth_level,
     }
 }
 
@@ -133,6 +174,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 endpoint: surreal_cli.endpoint,
                 namespace: surreal_cli.namespace,
                 database: surreal_cli.username,
+                auth: match (surreal_cli.auth_username, surreal_cli.auth_password) {
+                    (Some(user), Some(pass)) => Some(
+                        crate::data_storage::surrealdb_layer::data_layer_commands::SurrealAuthConfig {
+                            username: user,
+                            password: pass,
+                            level: surreal_cli.auth_level,
+                        },
+                    ),
+                    (None, None) => None,
+                    _ => {
+                        eprintln!(
+                            "If providing SurrealDB auth, you must provide both --surreal-auth-username and --surreal-auth-password."
+                        );
+                        std::process::exit(2);
+                    }
+                },
             },
         )
         .await

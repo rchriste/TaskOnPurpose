@@ -5,6 +5,7 @@ use surrealdb::{
     err::Error as CoreError,
     kvs::Datastore,
     opt::PatchOp,
+    opt::auth,
     sql::Datetime,
 };
 use tokio::sync::{
@@ -109,6 +110,15 @@ pub(crate) struct SurrealDbConnectionConfig {
     pub(crate) endpoint: String,
     pub(crate) namespace: String,
     pub(crate) database: String,
+    pub(crate) auth: Option<SurrealAuthConfig>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SurrealAuthConfig {
+    pub(crate) username: String,
+    pub(crate) password: String,
+    /// "root" | "ns" | "db" (defaults to "root")
+    pub(crate) level: Option<String>,
 }
 
 impl DataLayerCommands {
@@ -151,6 +161,20 @@ pub(crate) async fn data_storage_start_and_run(
             }
         }
     };
+
+    if let Some(auth_cfg) = &config.auth
+        && let Err(err) = authenticate_surrealdb(&db, &config, auth_cfg).await
+    {
+        eprintln!(
+            "Failed to authenticate to SurrealDB (endpoint='{}'): {:?}\n\
+             If this is a remote SurrealDB, validate your login credentials and consider passing:\n\
+             - --surreal-auth-username <user>\n\
+             - --surreal-auth-password <pass>\n\
+             - --surreal-auth-level root|ns|db\n",
+            config.endpoint, err
+        );
+        return;
+    }
 
     ensure_namespace_and_migrate_if_needed(&db, &config).await;
 
@@ -415,6 +439,59 @@ pub(crate) async fn data_storage_start_and_run(
     }
 }
 
+async fn authenticate_surrealdb(
+    db: &Surreal<Any>,
+    conn: &SurrealDbConnectionConfig,
+    auth_cfg: &SurrealAuthConfig,
+) -> Result<(), SurrealError> {
+    let level = auth_cfg
+        .level
+        .as_deref()
+        .unwrap_or("root")
+        .to_ascii_lowercase();
+
+    match level.as_str() {
+        "root" => {
+            db.signin(auth::Root {
+                username: auth_cfg.username.as_str(),
+                password: auth_cfg.password.as_str(),
+            })
+            .await?;
+        }
+        "ns" | "namespace" => {
+            db.signin(auth::Namespace {
+                namespace: conn.namespace.as_str(),
+                username: auth_cfg.username.as_str(),
+                password: auth_cfg.password.as_str(),
+            })
+            .await?;
+        }
+        "db" | "database" => {
+            db.signin(auth::Database {
+                namespace: conn.namespace.as_str(),
+                database: conn.database.as_str(),
+                username: auth_cfg.username.as_str(),
+                password: auth_cfg.password.as_str(),
+            })
+            .await?;
+        }
+        other => {
+            // Default to root auth if they provided an unknown value
+            println!(
+                "Unknown --surreal-auth-level '{}'; defaulting to 'root'.",
+                other
+            );
+            db.signin(auth::Root {
+                username: auth_cfg.username.as_str(),
+                password: auth_cfg.password.as_str(),
+            })
+            .await?;
+        }
+    }
+
+    Ok(())
+}
+
 fn surreal_tables_has_any_data(tables: &SurrealTables) -> bool {
     !tables.surreal_items.is_empty()
         || !tables.surreal_time_spent_log.is_empty()
@@ -646,6 +723,18 @@ pub(crate) async fn load_from_surrealdb_upgrade_if_needed(db: &Surreal<Any>) -> 
             }
         }
         Err(err) => {
+            let err_string = err.to_string();
+            if err_string.contains("IAM error")
+                || err_string.contains("Not enough permissions")
+                || err_string.contains("not enough permissions")
+            {
+                panic!(
+                    "SurrealDB permissions error while reading items table: {}\n\
+                     If connecting to a remote SurrealDB, you likely need to authenticate.\n\
+                     Try: --surreal-auth-username <user> --surreal-auth-password <pass> [--surreal-auth-level root|ns|db]\n",
+                    err_string
+                );
+            }
             println!("Upgrading items table because of issue: {}", err);
             upgrade_items_table(db).await;
             db.select(SurrealItem::TABLE_NAME).await.unwrap()
@@ -983,6 +1072,7 @@ mod tests {
             endpoint: "mem://".to_string(),
             namespace: "TaskOnPurpose".to_string(),
             database: "test".to_string(),
+            auth: None,
         }
     }
 

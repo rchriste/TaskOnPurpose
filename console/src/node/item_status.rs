@@ -642,6 +642,7 @@ mod tests {
             endpoint: "mem://".to_string(),
             namespace: "TaskOnPurpose".to_string(),
             database: "test".to_string(),
+            auth: None,
         }
     }
 
