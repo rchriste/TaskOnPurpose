@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
-use inquire::{InquireError, Select, Text};
 use crate::menu::inquire::default_select_page_size;
+use inquire::{InquireError, Select, Text};
 
 enum ConfigureOptions {
     Help,

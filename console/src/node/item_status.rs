@@ -627,7 +627,9 @@ mod tests {
         base_data::BaseData,
         calculated_data::CalculatedData,
         data_storage::surrealdb_layer::{
-            data_layer_commands::{DataLayerCommands, data_storage_start_and_run},
+            data_layer_commands::{
+                DataLayerCommands, SurrealDbConnectionConfig, data_storage_start_and_run,
+            },
             surreal_item::SurrealDependency,
             surreal_tables::SurrealTables,
         },
@@ -635,12 +637,20 @@ mod tests {
         node::Filter,
     };
 
+    fn mem_config() -> SurrealDbConnectionConfig {
+        SurrealDbConnectionConfig {
+            endpoint: "mem://".to_string(),
+            namespace: "TaskOnPurpose".to_string(),
+            database: "test".to_string(),
+        }
+    }
+
     #[tokio::test]
     async fn item_with_a_child_has_that_child_as_a_dependency() {
         // Arrange
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         sender
             .send(DataLayerCommands::NewItem(
@@ -695,7 +705,7 @@ mod tests {
         // Arrange
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         sender
             .send(DataLayerCommands::NewItem(
@@ -749,7 +759,7 @@ mod tests {
         // Arrange
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         sender
             .send(DataLayerCommands::NewItem(

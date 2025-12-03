@@ -30,8 +30,8 @@ use crate::{
         display_urgency_plan::DisplayUrgency,
     },
     menu::inquire::{
-        default_select_page_size,
         back_menu::capture,
+        default_select_page_size,
         do_now_list_menu::{
             do_now_list_single_item::{
                 give_this_item_a_parent::give_this_item_a_parent,

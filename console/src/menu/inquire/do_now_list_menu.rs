@@ -9,6 +9,7 @@ pub(crate) mod search;
 
 use std::{fmt::Display, iter::once};
 
+use crate::menu::inquire::default_select_page_size;
 use ahash::{HashMap, HashSet};
 use better_term::Style;
 use change_mode::present_change_mode_menu;
@@ -22,7 +23,6 @@ use pick_item_review_frequency::present_pick_item_review_frequency_menu;
 use pick_what_should_be_done_first::present_pick_what_should_be_done_first_menu;
 use review_item::present_review_item_menu;
 use search::present_search_menu;
-use crate::menu::inquire::default_select_page_size;
 use surrealdb::RecordId;
 use tokio::sync::mpsc::Sender;
 

@@ -104,6 +104,13 @@ pub(crate) enum DataLayerCommands {
     },
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct SurrealDbConnectionConfig {
+    pub(crate) endpoint: String,
+    pub(crate) namespace: String,
+    pub(crate) database: String,
+}
+
 impl DataLayerCommands {
     pub(crate) async fn get_raw_data(
         sender: &Sender<DataLayerCommands>,
@@ -119,9 +126,10 @@ impl DataLayerCommands {
 
 pub(crate) async fn data_storage_start_and_run(
     mut data_storage_layer_receive_rx: Receiver<DataLayerCommands>,
-    endpoint: &str,
+    config: SurrealDbConnectionConfig,
 ) {
-    let db = match connect(endpoint).await {
+    let endpoint = config.endpoint.clone();
+    let db = match connect(endpoint.as_str()).await {
         Ok(db) => db,
         Err(err) => {
             // If the stored data on disk is from an older SurrealDB storage format,
@@ -131,19 +139,20 @@ pub(crate) async fn data_storage_start_and_run(
                     "Detected outdated SurrealDB storage version at '{}'. Upgrading storage in place...",
                     endpoint
                 );
-                if let Err(upgrade_err) = upgrade_surreal_storage(endpoint).await {
+                if let Err(upgrade_err) = upgrade_surreal_storage(endpoint.as_str()).await {
                     panic!(
                         "Failed to upgrade SurrealDB storage automatically: {:?}",
                         upgrade_err
                     );
                 }
-                connect(endpoint).await.unwrap()
+                connect(endpoint.as_str()).await.unwrap()
             } else {
                 panic!("Failed to connect to SurrealDB: {:?}", err);
             }
         }
     };
-    db.use_ns("OnPurpose").use_db("Russ").await.unwrap(); //TODO: "Russ" should be a parameter, maybe the username or something
+
+    ensure_namespace_and_migrate_if_needed(&db, &config).await;
 
     // let updated: Option<SurrealItem> = db.update((SurrealItem::TABLE_NAME, "5i5mkemqn0f1716v3ycw"))
     //     .patch(PatchOp::replace("/urgency_plan", None::<Option<SurrealUrgencyPlan>>)).await.unwrap();
@@ -404,6 +413,192 @@ pub(crate) async fn data_storage_start_and_run(
             None => return, //Channel closed, time to shutdown down, exit
         }
     }
+}
+
+fn surreal_tables_has_any_data(tables: &SurrealTables) -> bool {
+    !tables.surreal_items.is_empty()
+        || !tables.surreal_time_spent_log.is_empty()
+        || !tables.surreal_in_the_moment_priorities.is_empty()
+        || !tables.surreal_current_modes.is_empty()
+        || !tables.surreal_modes.is_empty()
+        || !tables.surreal_events.is_empty()
+}
+
+async fn ensure_namespace_and_migrate_if_needed(
+    db: &Surreal<Any>,
+    config: &SurrealDbConnectionConfig,
+) {
+    let target_ns = config.namespace.as_str();
+    let db_name = config.database.as_str();
+
+    // Always use target namespace/db going forward.
+    db.use_ns(target_ns).use_db(db_name).await.unwrap();
+
+    // If the target namespace already has data, nothing to do.
+    let target_tables = load_from_surrealdb_upgrade_if_needed(db).await;
+    if surreal_tables_has_any_data(&target_tables) {
+        return;
+    }
+
+    // Legacy fallback: copy from `OnPurpose` if it has data.
+    // Old data may have been stored under the hardcoded db name "Russ", or under the current username.
+    let legacy_ns = "OnPurpose";
+    let legacy_db_candidates = if db_name == "Russ" {
+        vec![db_name]
+    } else {
+        vec![db_name, "Russ"]
+    };
+
+    let mut legacy_tables: Option<SurrealTables> = None;
+    let mut legacy_db_used: Option<&str> = None;
+    for legacy_db in legacy_db_candidates {
+        db.use_ns(legacy_ns).use_db(legacy_db).await.unwrap();
+        let tables = load_from_surrealdb_upgrade_if_needed(db).await;
+        if surreal_tables_has_any_data(&tables) {
+            legacy_tables = Some(tables);
+            legacy_db_used = Some(legacy_db);
+            break;
+        }
+    }
+
+    let Some(legacy_tables) = legacy_tables else {
+        // Restore target context.
+        db.use_ns(target_ns).use_db(db_name).await.unwrap();
+        return;
+    };
+
+    println!(
+        "No data found in SurrealDB namespace '{}'. Copying existing data from legacy namespace '{}' (db='{}') into '{}' (db='{}')...",
+        target_ns,
+        legacy_ns,
+        legacy_db_used.unwrap_or("UNKNOWN"),
+        target_ns,
+        db_name
+    );
+
+    db.use_ns(target_ns).use_db(db_name).await.unwrap();
+
+    // Copy records preserving record IDs so references remain valid.
+    for record in legacy_tables.surreal_items.into_iter() {
+        let mut updated: Vec<SurrealItem> = db
+            .upsert(SurrealItem::TABLE_NAME)
+            .content(record.clone())
+            .await
+            .unwrap();
+        if updated.is_empty() {
+            // Same workaround as elsewhere in this file: upsert can silently do nothing.
+            updated = db
+                .insert(SurrealItem::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .unwrap();
+        }
+        assert!(
+            !updated.is_empty(),
+            "Failed to copy SurrealItem {:?}",
+            record.id
+        );
+    }
+    for record in legacy_tables.surreal_time_spent_log.into_iter() {
+        let mut updated: Vec<SurrealTimeSpent> = db
+            .upsert(SurrealTimeSpent::TABLE_NAME)
+            .content(record.clone())
+            .await
+            .unwrap();
+        if updated.is_empty() {
+            updated = db
+                .insert(SurrealTimeSpent::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .unwrap();
+        }
+        assert!(
+            !updated.is_empty(),
+            "Failed to copy SurrealTimeSpent {:?}",
+            record.id
+        );
+    }
+    for record in legacy_tables.surreal_in_the_moment_priorities.into_iter() {
+        let mut updated: Vec<SurrealInTheMomentPriority> = db
+            .upsert(SurrealInTheMomentPriority::TABLE_NAME)
+            .content(record.clone())
+            .await
+            .unwrap();
+        if updated.is_empty() {
+            updated = db
+                .insert(SurrealInTheMomentPriority::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .unwrap();
+        }
+        assert!(
+            !updated.is_empty(),
+            "Failed to copy SurrealInTheMomentPriority {:?}",
+            record.id
+        );
+    }
+    for record in legacy_tables.surreal_current_modes.into_iter() {
+        let mut updated: Vec<SurrealCurrentMode> = db
+            .upsert(SurrealCurrentMode::TABLE_NAME)
+            .content(record.clone())
+            .await
+            .unwrap();
+        if updated.is_empty() {
+            updated = db
+                .insert(SurrealCurrentMode::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .unwrap();
+        }
+        assert!(
+            !updated.is_empty(),
+            "Failed to copy SurrealCurrentMode {:?}",
+            record.id
+        );
+    }
+    for record in legacy_tables.surreal_modes.into_iter() {
+        let mut updated: Vec<SurrealMode> = db
+            .upsert(surreal_mode::SurrealMode::TABLE_NAME)
+            .content(record.clone())
+            .await
+            .unwrap();
+        if updated.is_empty() {
+            updated = db
+                .insert(surreal_mode::SurrealMode::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .unwrap();
+        }
+        assert!(
+            !updated.is_empty(),
+            "Failed to copy SurrealMode {:?}",
+            record.id
+        );
+    }
+    for record in legacy_tables.surreal_events.into_iter() {
+        let mut updated: Vec<SurrealEvent> = db
+            .upsert(SurrealEvent::TABLE_NAME)
+            .content(record.clone())
+            .await
+            .unwrap();
+        if updated.is_empty() {
+            updated = db
+                .insert(SurrealEvent::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .unwrap();
+        }
+        assert!(
+            !updated.is_empty(),
+            "Failed to copy SurrealEvent {:?}",
+            record.id
+        );
+    }
+
+    println!(
+        "SurrealDB namespace copy complete. Continuing with namespace '{}' (db='{}').",
+        target_ns, db_name
+    );
 }
 
 /// Upgrade an embedded/local SurrealDB datastore to the latest storage version.
@@ -783,11 +978,19 @@ mod tests {
         new_item::NewItemBuilder,
     };
 
+    fn mem_config() -> SurrealDbConnectionConfig {
+        SurrealDbConnectionConfig {
+            endpoint: "mem://".to_string(),
+            namespace: "TaskOnPurpose".to_string(),
+            database: "test".to_string(),
+        }
+    }
+
     #[tokio::test]
     async fn data_starts_empty() {
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         let surreal_tables = SurrealTables::new(&sender).await.unwrap();
 
@@ -802,7 +1005,7 @@ mod tests {
     async fn add_new_item() {
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         let new_item = NewItem::new("New item".into(), Utc::now());
         sender
@@ -826,7 +1029,7 @@ mod tests {
     async fn finish_item() {
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         let new_next_step = NewItemBuilder::default()
             .summary("New next step")
@@ -871,7 +1074,7 @@ mod tests {
     async fn cover_item_with_a_new_proactive_next_step() {
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         let new_action = NewItemBuilder::default()
             .summary("Item to be covered")
@@ -940,7 +1143,7 @@ mod tests {
     async fn parent_item_with_a_new_item() {
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         let new_action = NewItemBuilder::default()
             .summary("Item that needs a parent")
@@ -1017,7 +1220,7 @@ mod tests {
     async fn parent_item_with_an_existing_item_that_has_no_children() {
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         let item_that_needs_a_parent = NewItemBuilder::default()
             .summary("Item that needs a parent")
@@ -1110,7 +1313,7 @@ mod tests {
         // SETUP
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         let child_item = NewItemBuilder::default()
             .summary("Child Item at the top of the list")
@@ -1344,7 +1547,7 @@ mod tests {
         // SETUP
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         let child_item = NewItemBuilder::default()
             .summary("Child Item at the top of the list")

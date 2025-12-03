@@ -206,12 +206,9 @@ async fn ask_when_started_and_stopped(
         };
         println!("When started: {:?}", when_started);
         let stopped_when = vec![StoppedWhen::Now, StoppedWhen::ManualTime];
-        let stopped_when = Select::new(
-            "When did you stop working on this item?",
-            stopped_when,
-        )
-        .with_page_size(default_select_page_size())
-        .prompt();
+        let stopped_when = Select::new("When did you stop working on this item?", stopped_when)
+            .with_page_size(default_select_page_size())
+            .prompt();
         let when_stopped = match stopped_when {
             Ok(StoppedWhen::Now) => Local::now(),
             Ok(StoppedWhen::ManualTime) => loop {

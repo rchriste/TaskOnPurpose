@@ -186,7 +186,7 @@ mod tests {
     use crate::base_data::BaseData;
     use crate::calculated_data::CalculatedData;
     use crate::data_storage::surrealdb_layer::data_layer_commands::{
-        DataLayerCommands, data_storage_start_and_run,
+        DataLayerCommands, SurrealDbConnectionConfig, data_storage_start_and_run,
     };
     use crate::data_storage::surrealdb_layer::surreal_item::{
         SurrealScheduled, SurrealUrgency, SurrealUrgencyPlan,
@@ -195,12 +195,20 @@ mod tests {
     use crate::new_item::NewItemBuilder;
     use crate::systems::upcoming::Upcoming;
 
+    fn mem_config() -> SurrealDbConnectionConfig {
+        SurrealDbConnectionConfig {
+            endpoint: "mem://".to_string(),
+            namespace: "TaskOnPurpose".to_string(),
+            database: "test".to_string(),
+        }
+    }
+
     #[tokio::test]
     async fn when_one_item_is_scheduled_inside_of_another_item_it_is_marked_as_a_conflict() {
         //Arrange
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
-            tokio::spawn(async move { data_storage_start_and_run(receiver, "mem://").await });
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
 
         let now = Utc::now();
         sender

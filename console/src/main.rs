@@ -25,6 +25,90 @@ use crate::{
     menu::inquire::do_now_list_menu::present_normal_do_now_list_menu,
 };
 
+#[derive(Debug, Clone)]
+struct CliSurrealConfig {
+    endpoint: String,
+    namespace: String,
+    username: String,
+}
+
+fn print_help_and_exit() -> ! {
+    eprintln!(
+        r#"Task On Purpose
+
+Usage:
+  taskonpurpose [inmemorydb] [--surreal-endpoint <endpoint>] [--namespace <ns>] [--username <user>]
+
+Options:
+  --surreal-endpoint, -e   SurrealDB connection string/endpoint (e.g. mem://, file://..., ws://...)
+  --namespace, -n          SurrealDB namespace (default: TaskOnPurpose)
+  --username, --user, -u   Username to use as the SurrealDB *database name* (default: OS user)
+  --help, -h               Show this help
+
+Notes:
+  - The SurrealDB database name is derived from the provided username (this replaces the previous hardcoded \"Russ\").
+  - On startup, if namespace \"TaskOnPurpose\" is empty but legacy namespace \"OnPurpose\" has data, the data is copied into \"TaskOnPurpose\".
+"#
+    );
+    std::process::exit(0);
+}
+
+fn default_os_username() -> String {
+    env::var("USERNAME")
+        .or_else(|_| env::var("USER"))
+        .unwrap_or_else(|_| "default".to_string())
+}
+
+fn parse_cli(args: &[String]) -> CliSurrealConfig {
+    // Back-compat: `inmemorydb` positional arg still works.
+    let mut endpoint = if args.len() > 1 && args[1] == "inmemorydb" {
+        "mem://".to_string()
+    } else {
+        // TODO: Get a default file location that works for both Linux and Windows
+        "file://c:/.on_purpose.db".to_string()
+    };
+
+    let mut namespace = "TaskOnPurpose".to_string();
+    let mut username = default_os_username();
+
+    let mut i = 1usize;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--help" | "-h" => print_help_and_exit(),
+            "--surreal-endpoint" | "--endpoint" | "-e" => {
+                i += 1;
+                endpoint = args
+                    .get(i)
+                    .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                    .to_string();
+            }
+            "--namespace" | "--ns" | "-n" => {
+                i += 1;
+                namespace = args
+                    .get(i)
+                    .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                    .to_string();
+            }
+            "--username" | "--user" | "-u" => {
+                i += 1;
+                username = args
+                    .get(i)
+                    .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                    .to_string();
+            }
+            // Ignore positional args we already handle (like `inmemorydb`)
+            _ => {}
+        }
+        i += 1;
+    }
+
+    CliSurrealConfig {
+        endpoint,
+        namespace,
+        username,
+    }
+}
+
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
@@ -40,20 +124,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mpsc::channel(commands_in_flight_limit);
 
     let args: Vec<String> = env::args().collect();
+    let surreal_cli = parse_cli(&args);
 
-    let data_storage_join_handle = if args.len() > 1 && args[1] == "inmemorydb" {
-        tokio::spawn(async move {
-            data_storage_start_and_run(have_data_storage_layer_use_to_receive_rx, "mem://").await
-        })
-    } else {
-        tokio::spawn(async move {
-            data_storage_start_and_run(
-                have_data_storage_layer_use_to_receive_rx,
-                "file://c:/.on_purpose.db", //TODO: Get a default file location that works for both Linux and Windows
-            )
-            .await
-        })
-    };
+    let data_storage_join_handle = tokio::spawn(async move {
+        data_storage_start_and_run(
+            have_data_storage_layer_use_to_receive_rx,
+            crate::data_storage::surrealdb_layer::data_layer_commands::SurrealDbConnectionConfig {
+                endpoint: surreal_cli.endpoint,
+                namespace: surreal_cli.namespace,
+                database: surreal_cli.username,
+            },
+        )
+        .await
+    });
 
     //If the current executable is more than 3 months old print a message that there is probably a newer version available
     let exe_path = env::current_exe().unwrap();
