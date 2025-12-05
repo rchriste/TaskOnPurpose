@@ -1487,6 +1487,37 @@ mod tests {
             )
         );
 
+        // Test case-insensitive variants of "Next day"
+        assert_eq!(
+            parse_exact_or_relative_datetime("NEXT DAY 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("next day 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
         assert_eq!(
             parse_exact_or_relative_datetime("Tomorrow 3:00pm"),
             Some(
