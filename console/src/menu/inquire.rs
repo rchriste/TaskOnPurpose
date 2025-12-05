@@ -3,8 +3,8 @@ use lazy_static::lazy_static;
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveTime, TimeZone};
 use crossterm::terminal;
-use std::borrow::Cow;
 use regex::{Regex, RegexBuilder};
+use std::borrow::Cow;
 
 pub(crate) mod back_menu;
 pub(crate) mod do_now_list_menu;
@@ -1426,7 +1426,7 @@ mod tests {
 
     #[test]
     fn test_parse_exact_or_relative_datetime_tomorrow_or_next_day_plus_time_is_tomorrow_at_that_time()
-    {
+     {
         assert_eq!(
             parse_exact_or_relative_datetime("Tomorrow"),
             Some(
