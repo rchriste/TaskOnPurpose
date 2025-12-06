@@ -17,6 +17,7 @@ use crate::{
 };
 
 use crate::menu::inquire::default_select_page_size;
+use crate::data_storage::surrealdb_layer::surreal_item::SurrealItemType;
 
 use super::{
     DisplayFormat, ItemTypeSelection,
@@ -43,6 +44,18 @@ impl Display for ChildItem<'_> {
     }
 }
 
+fn item_type_sort_order(item_type: &SurrealItemType) -> u8 {
+    // Assign a numeric value to each variant for consistent ordering
+    match item_type {
+        SurrealItemType::Undeclared => 0,
+        SurrealItemType::Action => 1,
+        SurrealItemType::Goal(_) => 2,
+        SurrealItemType::IdeaOrThought => 3,
+        SurrealItemType::Motivation(_) => 4,
+        SurrealItemType::PersonOrGroup => 5,
+    }
+}
+
 fn sort_items_motivations_first(items: &mut [DisplayItemNode<'_>]) {
     items.sort_by(|a, b| {
         if a.is_type_motivation() {
@@ -61,10 +74,10 @@ fn sort_items_motivations_first(items: &mut [DisplayItemNode<'_>]) {
             }
         } else if b.is_type_motivation() || b.is_type_goal() {
             Ordering::Greater
-        } else if a.get_type() == b.get_type() {
-            Ordering::Equal
         } else {
-            Ordering::Less
+            // For items that are neither motivations nor goals, compare by type
+            // to ensure a stable ordering (satisfying the antisymmetric property)
+            item_type_sort_order(a.get_type()).cmp(&item_type_sort_order(b.get_type()))
         }
         .then_with(|| a.get_item().get_summary().cmp(b.get_item().get_summary()))
         .then_with(|| a.get_created().cmp(b.get_created()).reverse())
@@ -380,6 +393,87 @@ mod tests {
                 "Apple action",
                 "Zebra action"
             ]
+        );
+    }
+
+    #[test]
+    fn different_item_types_are_sorted_consistently() {
+        // This test ensures that the sorting function satisfies the antisymmetric property
+        // when comparing different item types (neither motivations nor goals)
+        let surreal_items = vec![
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "1").into()))
+                .summary("Action item")
+                .item_type(SurrealItemType::Action)
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "2").into()))
+                .summary("Idea item")
+                .item_type(SurrealItemType::IdeaOrThought)
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "3").into()))
+                .summary("Undeclared item")
+                .item_type(SurrealItemType::Undeclared)
+                .build()
+                .unwrap(),
+        ];
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(surreal_items)
+            .build()
+            .unwrap();
+        let now = Utc::now();
+        let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+        let calculated_data = CalculatedData::new_from_base_data(base_data);
+
+        let action_id: RecordId = ("surreal_item", "1").into();
+        let idea_id: RecordId = ("surreal_item", "2").into();
+        let undeclared_id: RecordId = ("surreal_item", "3").into();
+
+        let items_status = calculated_data.get_items_status();
+
+        let mut display_items = vec![
+            DisplayItemNode::new(
+                items_status
+                    .get(&action_id)
+                    .expect("Item exists")
+                    .get_item_node(),
+                Filter::Active,
+                DisplayFormat::SingleLine,
+            ),
+            DisplayItemNode::new(
+                items_status
+                    .get(&idea_id)
+                    .expect("Item exists")
+                    .get_item_node(),
+                Filter::Active,
+                DisplayFormat::SingleLine,
+            ),
+            DisplayItemNode::new(
+                items_status
+                    .get(&undeclared_id)
+                    .expect("Item exists")
+                    .get_item_node(),
+                Filter::Active,
+                DisplayFormat::SingleLine,
+            ),
+        ];
+
+        sort_items_motivations_first(&mut display_items);
+
+        let summaries: Vec<&str> = display_items
+            .iter()
+            .map(|item| item.get_item().get_summary())
+            .collect();
+        
+        // Items should be sorted by type (Undeclared < Action < IdeaOrThought)
+        // then alphabetically within each type
+        assert_eq!(
+            summaries,
+            vec!["Undeclared item", "Action item", "Idea item"]
         );
     }
 }
