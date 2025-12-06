@@ -43,6 +43,34 @@ impl Display for ChildItem<'_> {
     }
 }
 
+fn sort_items_motivations_first(items: &mut [DisplayItemNode<'_>]) {
+    items.sort_by(|a, b| {
+        if a.is_type_motivation() {
+            if b.is_type_motivation() {
+                Ordering::Equal
+            } else {
+                Ordering::Less
+            }
+        } else if a.is_type_goal() {
+            if b.is_type_motivation() {
+                Ordering::Greater
+            } else if b.is_type_goal() {
+                Ordering::Equal
+            } else {
+                Ordering::Less
+            }
+        } else if b.is_type_motivation() || b.is_type_goal() {
+            Ordering::Greater
+        } else if a.get_type() == b.get_type() {
+            Ordering::Equal
+        } else {
+            Ordering::Less
+        }
+        .then_with(|| a.get_item().get_summary().cmp(b.get_item().get_summary()))
+        .then_with(|| a.get_created().cmp(b.get_created()).reverse())
+    });
+}
+
 pub(crate) async fn select_an_item<'a>(
     dont_show_these_items: Vec<&Item<'_>>,
     sorting_order: SelectAnItemSortingOrder,
@@ -59,31 +87,9 @@ pub(crate) async fn select_an_item<'a>(
         .map(|x| DisplayItemNode::new(x.get_item_node(), Filter::Active, DisplayFormat::SingleLine))
         .collect::<Vec<_>>();
     match sorting_order {
-        SelectAnItemSortingOrder::MotivationsFirst => existing_items.sort_by(|a, b| {
-            if a.is_type_motivation() {
-                if b.is_type_motivation() {
-                    Ordering::Equal
-                } else {
-                    Ordering::Less
-                }
-            } else if a.is_type_goal() {
-                if b.is_type_motivation() {
-                    Ordering::Greater
-                } else if b.is_type_goal() {
-                    Ordering::Equal
-                } else {
-                    Ordering::Less
-                }
-            } else if b.is_type_motivation() || b.is_type_goal() {
-                Ordering::Greater
-            } else if a.get_type() == b.get_type() {
-                Ordering::Equal
-            } else {
-                Ordering::Less
-            }
-            .then_with(|| a.get_item().get_summary().cmp(b.get_item().get_summary()))
-            .then_with(|| a.get_created().cmp(b.get_created()).reverse())
-        }),
+        SelectAnItemSortingOrder::MotivationsFirst => {
+            sort_items_motivations_first(&mut existing_items)
+        }
         SelectAnItemSortingOrder::NewestFirst => {
             existing_items.sort_by(|a, b| a.get_created().cmp(b.get_created()).reverse())
         }
@@ -227,3 +233,154 @@ pub(crate) async fn state_a_child_action_new_item(
         Err(err) => todo!("Unexpected {}", err),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::sort_items_motivations_first;
+    use crate::{
+        base_data::BaseData,
+        calculated_data::CalculatedData,
+        data_storage::surrealdb_layer::{
+            surreal_item::{
+                SurrealHowMuchIsInMyControl, SurrealItemBuilder, SurrealItemType,
+                SurrealMotivationKind,
+            },
+            surreal_tables::SurrealTablesBuilder,
+        },
+        display::display_item_node::DisplayItemNode,
+        node::Filter,
+    };
+    use chrono::Utc;
+    use surrealdb::RecordId;
+
+    use super::DisplayFormat;
+
+    #[test]
+    fn items_are_sorted_alphabetically_within_type_groups() {
+        let surreal_items = vec![
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "1").into()))
+                .summary("Zebra motivation")
+                .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "2").into()))
+                .summary("Apple motivation")
+                .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "3").into()))
+                .summary("Zebra goal")
+                .item_type(SurrealItemType::Goal(SurrealHowMuchIsInMyControl::NotSet))
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "4").into()))
+                .summary("Apple goal")
+                .item_type(SurrealItemType::Goal(SurrealHowMuchIsInMyControl::NotSet))
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "5").into()))
+                .summary("Zebra action")
+                .item_type(SurrealItemType::Action)
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "6").into()))
+                .summary("Apple action")
+                .item_type(SurrealItemType::Action)
+                .build()
+                .unwrap(),
+        ];
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(surreal_items)
+            .build()
+            .unwrap();
+        let now = Utc::now();
+        let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+        let calculated_data = CalculatedData::new_from_base_data(base_data);
+
+        let zebra_motivation_id: RecordId = ("surreal_item", "1").into();
+        let apple_motivation_id: RecordId = ("surreal_item", "2").into();
+        let zebra_goal_id: RecordId = ("surreal_item", "3").into();
+        let apple_goal_id: RecordId = ("surreal_item", "4").into();
+        let zebra_action_id: RecordId = ("surreal_item", "5").into();
+        let apple_action_id: RecordId = ("surreal_item", "6").into();
+
+        let items_status = calculated_data.get_items_status();
+
+        let mut display_items = vec![
+            DisplayItemNode::new(
+                items_status
+                    .get(&zebra_motivation_id)
+                    .expect("Item exists")
+                    .get_item_node(),
+                Filter::Active,
+                DisplayFormat::SingleLine,
+            ),
+            DisplayItemNode::new(
+                items_status
+                    .get(&apple_motivation_id)
+                    .expect("Item exists")
+                    .get_item_node(),
+                Filter::Active,
+                DisplayFormat::SingleLine,
+            ),
+            DisplayItemNode::new(
+                items_status
+                    .get(&zebra_goal_id)
+                    .expect("Item exists")
+                    .get_item_node(),
+                Filter::Active,
+                DisplayFormat::SingleLine,
+            ),
+            DisplayItemNode::new(
+                items_status
+                    .get(&apple_goal_id)
+                    .expect("Item exists")
+                    .get_item_node(),
+                Filter::Active,
+                DisplayFormat::SingleLine,
+            ),
+            DisplayItemNode::new(
+                items_status
+                    .get(&zebra_action_id)
+                    .expect("Item exists")
+                    .get_item_node(),
+                Filter::Active,
+                DisplayFormat::SingleLine,
+            ),
+            DisplayItemNode::new(
+                items_status
+                    .get(&apple_action_id)
+                    .expect("Item exists")
+                    .get_item_node(),
+                Filter::Active,
+                DisplayFormat::SingleLine,
+            ),
+        ];
+
+        sort_items_motivations_first(&mut display_items);
+
+        let summaries: Vec<&str> = display_items
+            .iter()
+            .map(|item| item.get_item().get_summary())
+            .collect();
+        assert_eq!(
+            summaries,
+            vec![
+                "Apple motivation",
+                "Zebra motivation",
+                "Apple goal",
+                "Zebra goal",
+                "Apple action",
+                "Zebra action"
+            ]
+        );
+    }
+}
+
