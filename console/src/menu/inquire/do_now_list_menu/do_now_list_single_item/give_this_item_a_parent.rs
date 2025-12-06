@@ -61,20 +61,7 @@ pub(crate) async fn give_this_item_a_parent(
         //only takes a reference.
         .collect::<Vec<_>>();
 
-    nodes.sort_by(|a, b| {
-        //Motivational items first, then goals, then everything else.
-        if a.is_type_motivation() && !b.is_type_motivation() {
-            Ordering::Less
-        } else if !a.is_type_motivation() && b.is_type_motivation() {
-            Ordering::Greater
-        } else if a.is_type_goal() && !b.is_type_goal() {
-            Ordering::Less
-        } else if !a.is_type_goal() && b.is_type_goal() {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        }
-    });
+    sort_parent_nodes(&mut nodes);
 
     let mut list = Vec::new();
     if show_finish_option {
@@ -142,6 +129,25 @@ pub(crate) async fn give_this_item_a_parent(
     }
 }
 
+fn sort_parent_nodes(nodes: &mut [ItemNode<'_>]) {
+    nodes.sort_by(|a, b| {
+        //Motivational items first, then goals, then everything else.
+        if a.is_type_motivation() && !b.is_type_motivation() {
+            Ordering::Less
+        } else if !a.is_type_motivation() && b.is_type_motivation() {
+            Ordering::Greater
+        } else if a.is_type_goal() && !b.is_type_goal() {
+            Ordering::Less
+        } else if !a.is_type_goal() && b.is_type_goal() {
+            Ordering::Greater
+        } else {
+            Ordering::Equal
+        }
+        .then_with(|| a.get_summary().cmp(b.get_summary()))
+        .then_with(|| a.get_created().cmp(b.get_created()).reverse())
+    });
+}
+
 async fn parent_to_a_goal_or_motivation_new_goal_or_motivation(
     parent_this: &Item<'_>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
@@ -175,5 +181,93 @@ async fn parent_to_a_goal_or_motivation_new_goal_or_motivation(
         }
         Err(InquireError::OperationInterrupted) => Err(()),
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sort_parent_nodes;
+    use crate::{
+        calculated_data::parent_lookup::ParentLookup,
+        data_storage::surrealdb_layer::{
+            surreal_item::{
+                SurrealHowMuchIsInMyControl, SurrealItemBuilder, SurrealItemType,
+                SurrealMotivationKind,
+            },
+            surreal_tables::SurrealTablesBuilder,
+        },
+        node::item_node::ItemNode,
+    };
+    use chrono::Utc;
+    use surrealdb::RecordId;
+
+    #[test]
+    fn motivations_are_sorted_alphabetically_when_selecting_a_parent() {
+        let surreal_items = vec![
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "1").into()))
+                .summary("Zebra motivation")
+                .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "2").into()))
+                .summary("Apple motivation")
+                .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "3").into()))
+                .summary("Goal item")
+                .item_type(SurrealItemType::Goal(SurrealHowMuchIsInMyControl::NotSet))
+                .build()
+                .unwrap(),
+        ];
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(surreal_items)
+            .build()
+            .unwrap();
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let parent_lookup = ParentLookup::new(&items);
+        let events = surreal_tables.make_events();
+        let time_spent_log = surreal_tables.make_time_spent_log().collect::<Vec<_>>();
+
+        let zebra_id: RecordId = ("surreal_item", "1").into();
+        let apple_id: RecordId = ("surreal_item", "2").into();
+        let goal_id: RecordId = ("surreal_item", "3").into();
+
+        let zebra_node = ItemNode::new(
+            items.get(&zebra_id).expect("Item exists"),
+            &items,
+            &parent_lookup,
+            &events,
+            &time_spent_log,
+        );
+        let apple_node = ItemNode::new(
+            items.get(&apple_id).expect("Item exists"),
+            &items,
+            &parent_lookup,
+            &events,
+            &time_spent_log,
+        );
+        let goal_node = ItemNode::new(
+            items.get(&goal_id).expect("Item exists"),
+            &items,
+            &parent_lookup,
+            &events,
+            &time_spent_log,
+        );
+
+        let mut nodes = vec![zebra_node, apple_node, goal_node];
+
+        sort_parent_nodes(&mut nodes);
+
+        let summaries: Vec<&str> = nodes.iter().map(|node| node.get_summary()).collect();
+        assert_eq!(
+            summaries,
+            vec!["Apple motivation", "Zebra motivation", "Goal item"]
+        );
     }
 }
