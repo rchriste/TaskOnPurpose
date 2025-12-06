@@ -81,6 +81,7 @@ pub(crate) async fn select_an_item<'a>(
             } else {
                 Ordering::Less
             }
+            .then_with(|| a.get_item().get_summary().cmp(b.get_item().get_summary()))
             .then_with(|| a.get_created().cmp(b.get_created()).reverse())
         }),
         SelectAnItemSortingOrder::NewestFirst => {
