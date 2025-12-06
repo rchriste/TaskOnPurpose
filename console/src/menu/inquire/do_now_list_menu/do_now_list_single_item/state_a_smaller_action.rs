@@ -468,7 +468,7 @@ mod tests {
             .iter()
             .map(|item| item.get_item().get_summary())
             .collect();
-        
+
         // Items should be sorted by type (Undeclared < Action < IdeaOrThought)
         // then alphabetically within each type
         assert_eq!(
