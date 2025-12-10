@@ -167,6 +167,7 @@ async fn parent_to_a_goal_or_motivation_new_goal_or_motivation(
 
 #[cfg(test)]
 mod tests {
+    use super::DisplayFormat;
     use crate::{
         calculated_data::parent_lookup::ParentLookup,
         data_storage::surrealdb_layer::{
@@ -179,7 +180,6 @@ mod tests {
         display::display_item_node::{DisplayItemNode, DisplayItemNodeSortExt},
         node::{Filter, item_node::ItemNode},
     };
-    use super::DisplayFormat;
     use chrono::Utc;
     use surrealdb::RecordId;
 
