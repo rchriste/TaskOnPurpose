@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt};
+use std::fmt;
 
 use chrono::Utc;
 use inquire::{InquireError, Select};
@@ -10,7 +10,7 @@ use crate::{
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands, surreal_tables::SurrealTables,
     },
-    display::display_item_node::DisplayItemNode,
+    display::display_item_node::{DisplayItemNode, DisplayItemNodeSortExt},
     menu::inquire::{
         do_now_list_menu::do_now_list_single_item::ItemTypeSelection,
         select_higher_importance_than_this::select_higher_importance_than_this,
@@ -53,7 +53,7 @@ pub(crate) async fn give_this_item_a_parent(
     let active_items = base_data.get_active_items();
     let all_events = base_data.get_events();
     let time_spent_log = base_data.get_time_spent_log();
-    let mut nodes = active_items
+    let nodes = active_items
         .iter()
         .filter(|x| x.get_surreal_record_id() != parent_this.get_surreal_record_id())
         .map(|item| ItemNode::new(item, all_items, &parent_lookup, all_events, time_spent_log))
@@ -61,19 +61,19 @@ pub(crate) async fn give_this_item_a_parent(
         //only takes a reference.
         .collect::<Vec<_>>();
 
-    sort_parent_nodes(&mut nodes);
+    let mut display_nodes = nodes
+        .iter()
+        .map(|node| DisplayItemNode::new(node, Filter::Active, DisplayFormat::SingleLine))
+        .collect::<Vec<_>>();
+    display_nodes.sort_motivations_first_by_summary_then_created();
 
     let mut list = Vec::new();
     if show_finish_option {
         list.push(ParentItem::CreateNewItem);
         list.push(ParentItem::FinishItem);
     }
-    for node in nodes.iter() {
-        list.push(ParentItem::ItemNode(DisplayItemNode::new(
-            node,
-            Filter::Active,
-            DisplayFormat::SingleLine,
-        )));
+    for node in display_nodes.into_iter() {
+        list.push(ParentItem::ItemNode(node));
     }
 
     let selection = Select::new(
@@ -129,25 +129,6 @@ pub(crate) async fn give_this_item_a_parent(
     }
 }
 
-fn sort_parent_nodes(nodes: &mut [ItemNode<'_>]) {
-    nodes.sort_by(|a, b| {
-        //Motivational items first, then goals, then everything else.
-        if a.is_type_motivation() && !b.is_type_motivation() {
-            Ordering::Less
-        } else if !a.is_type_motivation() && b.is_type_motivation() {
-            Ordering::Greater
-        } else if a.is_type_goal() && !b.is_type_goal() {
-            Ordering::Less
-        } else if !a.is_type_goal() && b.is_type_goal() {
-            Ordering::Greater
-        } else {
-            Ordering::Equal
-        }
-        .then_with(|| a.get_summary().cmp(b.get_summary()))
-        .then_with(|| a.get_created().cmp(b.get_created()).reverse())
-    });
-}
-
 async fn parent_to_a_goal_or_motivation_new_goal_or_motivation(
     parent_this: &Item<'_>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
@@ -186,7 +167,6 @@ async fn parent_to_a_goal_or_motivation_new_goal_or_motivation(
 
 #[cfg(test)]
 mod tests {
-    use super::sort_parent_nodes;
     use crate::{
         calculated_data::parent_lookup::ParentLookup,
         data_storage::surrealdb_layer::{
@@ -196,8 +176,10 @@ mod tests {
             },
             surreal_tables::SurrealTablesBuilder,
         },
-        node::item_node::ItemNode,
+        display::display_item_node::{DisplayItemNode, DisplayItemNodeSortExt},
+        node::{Filter, item_node::ItemNode},
     };
+    use super::DisplayFormat;
     use chrono::Utc;
     use surrealdb::RecordId;
 
@@ -260,11 +242,19 @@ mod tests {
             &time_spent_log,
         );
 
-        let mut nodes = vec![zebra_node, apple_node, goal_node];
+        let nodes = vec![zebra_node, apple_node, goal_node];
 
-        sort_parent_nodes(&mut nodes);
+        let mut display_nodes = nodes
+            .iter()
+            .map(|node| DisplayItemNode::new(node, Filter::Active, DisplayFormat::SingleLine))
+            .collect::<Vec<_>>();
 
-        let summaries: Vec<&str> = nodes.iter().map(|node| node.get_summary()).collect();
+        display_nodes.sort_motivations_first_by_summary_then_created();
+
+        let summaries: Vec<&str> = display_nodes
+            .iter()
+            .map(|node| node.get_item().get_summary())
+            .collect();
         assert_eq!(
             summaries,
             vec!["Apple motivation", "Zebra motivation", "Goal item"]

@@ -1,8 +1,7 @@
-use std::fmt::Display;
+use std::{cmp::Ordering, fmt::Display};
 
 use crate::{
     base_data::item::Item,
-    data_storage::surrealdb_layer::surreal_item::SurrealItemType,
     node::{Filter, item_node::ItemNode},
 };
 
@@ -113,10 +112,6 @@ impl<'s> DisplayItemNode<'s> {
         self.item_node.is_type_goal()
     }
 
-    pub(crate) fn get_type(&self) -> &SurrealItemType {
-        self.item_node.get_type()
-    }
-
     pub(crate) fn get_created(&self) -> &chrono::DateTime<chrono::Utc> {
         self.item_node.get_created()
     }
@@ -124,4 +119,37 @@ impl<'s> DisplayItemNode<'s> {
     pub(crate) fn get_item(&self) -> &Item<'s> {
         self.item_node.get_item()
     }
+}
+
+pub(crate) trait DisplayItemNodeSortExt<'s> {
+    fn sort_motivations_first_by_summary_then_created(&mut self);
+    fn sort_newest_first(&mut self);
+}
+
+impl<'s> DisplayItemNodeSortExt<'s> for [DisplayItemNode<'s>] {
+    fn sort_motivations_first_by_summary_then_created(&mut self) {
+        self.sort_by(|a, b| compare_motivation_first(a, b));
+    }
+
+    fn sort_newest_first(&mut self) {
+        self.sort_by(|a, b| a.get_created().cmp(b.get_created()).reverse());
+    }
+}
+
+fn compare_motivation_first(a: &DisplayItemNode<'_>, b: &DisplayItemNode<'_>) -> Ordering {
+    let motivation_goal_ordering = if a.is_type_motivation() && !b.is_type_motivation() {
+        Ordering::Less
+    } else if !a.is_type_motivation() && b.is_type_motivation() {
+        Ordering::Greater
+    } else if a.is_type_goal() && !b.is_type_goal() {
+        Ordering::Less
+    } else if !a.is_type_goal() && b.is_type_goal() {
+        Ordering::Greater
+    } else {
+        Ordering::Equal
+    };
+
+    motivation_goal_ordering
+        .then_with(|| a.get_item().get_summary().cmp(b.get_item().get_summary()))
+        .then_with(|| a.get_created().cmp(b.get_created()).reverse())
 }
