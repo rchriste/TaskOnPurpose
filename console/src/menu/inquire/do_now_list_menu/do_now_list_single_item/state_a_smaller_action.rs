@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt::Display, iter::once};
+use std::{fmt::Display, iter::once};
 
 use chrono::Utc;
 use inquire::{InquireError, Select};
@@ -11,7 +11,7 @@ use crate::{
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands, surreal_tables::SurrealTables,
     },
-    display::display_item_node::DisplayItemNode,
+    display::display_item_node::{DisplayItemNode, DisplayItemNodeSortExt},
     menu::inquire::select_higher_importance_than_this::select_higher_importance_than_this,
     node::{Filter, item_node::ItemNode, item_status::ItemStatus},
 };
@@ -59,34 +59,10 @@ pub(crate) async fn select_an_item<'a>(
         .map(|x| DisplayItemNode::new(x.get_item_node(), Filter::Active, DisplayFormat::SingleLine))
         .collect::<Vec<_>>();
     match sorting_order {
-        SelectAnItemSortingOrder::MotivationsFirst => existing_items.sort_by(|a, b| {
-            if a.is_type_motivation() {
-                if b.is_type_motivation() {
-                    Ordering::Equal
-                } else {
-                    Ordering::Less
-                }
-            } else if a.is_type_goal() {
-                if b.is_type_motivation() {
-                    Ordering::Greater
-                } else if b.is_type_goal() {
-                    Ordering::Equal
-                } else {
-                    Ordering::Less
-                }
-            } else if b.is_type_motivation() || b.is_type_goal() {
-                Ordering::Greater
-            } else if a.get_type() == b.get_type() {
-                Ordering::Equal
-            } else {
-                Ordering::Less
-            }
-            .then_with(|| a.get_item().get_summary().cmp(b.get_item().get_summary()))
-            .then_with(|| a.get_created().cmp(b.get_created()).reverse())
-        }),
-        SelectAnItemSortingOrder::NewestFirst => {
-            existing_items.sort_by(|a, b| a.get_created().cmp(b.get_created()).reverse())
+        SelectAnItemSortingOrder::MotivationsFirst => {
+            existing_items.sort_motivations_first_by_summary_then_created();
         }
+        SelectAnItemSortingOrder::NewestFirst => existing_items.sort_newest_first(),
     }
     let list = chain!(
         once(ChildItem::CreateNewItem),
