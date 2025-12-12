@@ -224,7 +224,10 @@ mod tests {
             },
             surreal_tables::SurrealTablesBuilder,
         },
-        node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
+        node::{
+            urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
+            why_in_scope_and_action_with_item_status::WhyInScope,
+        },
         systems::do_now_list::DoNowList,
     };
     use chrono::Utc;
@@ -387,8 +390,8 @@ mod tests {
         // Find an item that's in scope for importance
         for urgency_level in ordered_list.iter() {
             let items_to_check = match urgency_level {
-                crate::node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus::SingleItem(item) => vec![item],
-                crate::node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus::MultipleItems(items) => items.iter().collect(),
+                UrgencyLevelItemWithItemStatus::SingleItem(item) => vec![item],
+                UrgencyLevelItemWithItemStatus::MultipleItems(items) => items.iter().collect(),
             };
 
             for item in items_to_check {
