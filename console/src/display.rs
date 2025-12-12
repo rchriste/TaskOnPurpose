@@ -12,6 +12,7 @@ pub(crate) mod display_scheduled_item;
 pub(crate) mod display_urgency_level_item_with_item_status;
 pub(crate) mod display_urgency_plan;
 pub(crate) mod display_why_in_scope_and_action_with_item_status;
+pub(crate) mod tree_renderer;
 
 pub(crate) enum DisplayStyle {
     Abbreviated,

@@ -1,3 +1,5 @@
+pub(crate) mod priority_wizard;
+
 use std::fmt::{self, Display, Formatter};
 
 use chrono::Utc;
