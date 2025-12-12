@@ -28,6 +28,26 @@ Items form complex graphs via parent-child relationships. The `node/item_node.rs
 
 ## Development Workflows
 
+### CI/CD
+The project uses GitHub Actions for continuous integration and release management.
+
+**Checkin Workflow** (`.github/workflows/checkin.yml`)
+- Triggers on push to `main` or pull requests targeting `main`
+- Runs on Windows, Linux, and macOS
+- Steps:
+  1. Checkout code
+  2. Build with `cargo build --verbose`
+  3. Run tests with `cargo test --verbose`
+
+**Release Workflow** (`.github/workflows/release.yml`)
+- Triggers on version tags (e.g., `v1.2.3`)
+- Builds release binaries for Windows, Linux, and macOS
+- Creates compressed archives:
+  - Windows: `OnPurpose_Console_Windows.zip`
+  - Linux: `OnPurpose_Console_Linux.tar.xz`
+  - macOS: `OnPurpose_Console_MacOS.zip`
+- Publishes draft releases with binaries attached
+
 ### Building & Running
 ```bash
 # Development with in-memory database
@@ -36,9 +56,26 @@ cargo run -- inmemorydb
 # Production with persistent database  
 cargo run
 
+# Build in release mode
+cargo build --release
+
 # Install as binary
 cargo install --path console
 ```
+
+### Linting
+The project uses Clippy for linting with custom configuration in `console/Clippy.toml`.
+
+```bash
+# Run Clippy
+cargo clippy
+
+# Run Clippy with all features
+cargo clippy --all-features
+```
+
+**Clippy Configuration**
+- Custom interior mutability ignore for `surrealdb::sql::Thing` due to SurrealDB alpha version compatibility
 
 ### Key Dependencies
 - **SurrealDB**: Embedded database (`surrealdb-alpha = "2.0.9"`)
@@ -48,7 +85,34 @@ cargo install --path console
 - **mimalloc**: Memory allocator (~15% performance improvement)
 
 ### Testing Patterns
-Unit tests focus on circular reference detection in item hierarchies. See `node/item_node.rs` tests for examples of creating `SurrealItemBuilder` test fixtures.
+Tests are embedded within source files using Rust's standard `#[cfg(test)]` module pattern.
+
+**Running Tests**
+```bash
+# Run all tests
+cargo test
+
+# Run tests with verbose output
+cargo test --verbose
+
+# Run tests for a specific module
+cargo test node::item_node
+```
+
+**Test Structure**
+- Tests are located in `#[cfg(test)]` modules within the same file as the code being tested
+- Test fixtures use the `SurrealItemBuilder` pattern for creating test data
+- Key test areas:
+  - Circular reference detection in item hierarchies (`node/item_node.rs`)
+  - Data layer operations (`data_storage/surrealdb_layer/data_layer_commands.rs`)
+  - Date/time parsing (`menu/inquire.rs`)
+  - Item dependencies and status (`node/item_status.rs`)
+  - In-the-moment priority application (`node/action_with_item_status.rs`)
+
+**Test Conventions**
+- Test names use descriptive `when_condition_then_result` or `test_feature_description` format
+- Tests use the builder pattern via `SurrealItemBuilder` for creating complex test fixtures
+- Circular reference tests verify that the system correctly detects and handles circular dependencies
 
 ## Code Patterns & Conventions
 
