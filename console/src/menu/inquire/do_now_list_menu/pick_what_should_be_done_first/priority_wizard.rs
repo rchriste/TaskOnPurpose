@@ -68,6 +68,22 @@ impl Display for NoSelectionChoice {
     }
 }
 
+enum ItemActionChoice {
+    DoItNow,
+    PrioritizeIt,
+    NextItem,
+}
+
+impl Display for ItemActionChoice {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ItemActionChoice::DoItNow => write!(f, "Do this item now (quick task)"),
+            ItemActionChoice::PrioritizeIt => write!(f, "Prioritize this item"),
+            ItemActionChoice::NextItem => write!(f, "Skip to next item"),
+        }
+    }
+}
+
 pub(crate) async fn present_priority_wizard_or_legacy<'a>(
     choices: &'a [WhyInScopeAndActionWithItemStatus<'a>],
     do_now_list: &DoNowList,
@@ -199,6 +215,47 @@ async fn priority_wizard_loop<'a>(
             DisplayFormat::MultiLineTreeReversed,
         );
 
+        println!("\nComparing item:\n{}\n", display_selected);
+
+        // Ask user what they want to do with this item
+        let action_choice = Select::new(
+            "What would you like to do with this item?",
+            vec![
+                ItemActionChoice::DoItNow,
+                ItemActionChoice::PrioritizeIt,
+                ItemActionChoice::NextItem,
+            ],
+        )
+        .with_page_size(default_select_page_size())
+        .prompt();
+
+        match action_choice {
+            Ok(ItemActionChoice::DoItNow) => {
+                // Route to the appropriate menu based on action type
+                super::handle_item_selection(
+                    selected_at_random,
+                    do_now_list,
+                    send_to_data_storage_layer,
+                )
+                .await?;
+
+                // After returning from the menu, return Ok to refresh the main loop
+                return Ok(());
+            }
+            Ok(ItemActionChoice::NextItem) => {
+                // Skip to next item - continue the loop
+                continue;
+            }
+            Ok(ItemActionChoice::PrioritizeIt) => {
+                // Continue to prioritization flow below
+            }
+            Err(InquireError::OperationCanceled) => {
+                return Ok(());
+            }
+            Err(InquireError::OperationInterrupted) => return Err(()),
+            Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+        }
+
         // Get all other unselected items for comparison
         let comparison_choices: Vec<_> = unselected_items
             .iter()
@@ -214,10 +271,7 @@ async fn priority_wizard_loop<'a>(
             })
             .collect();
 
-        println!("\nComparing item:\n{}\n", display_selected);
-
         // Ask which items this is higher priority than
-
         let selected_from = MultiSelect::new(
             "Which items is this HIGHER priority than? (Press Enter to skip to next item)",
             comparison_choices.clone(),
