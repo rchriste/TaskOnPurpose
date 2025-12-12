@@ -1,6 +1,5 @@
 use std::fmt::{Display, Formatter};
 
-use ahash::HashSet;
 use surrealdb::RecordId;
 
 use crate::{
@@ -9,9 +8,8 @@ use crate::{
     },
     display::display_action_with_item_status::DisplayActionWithItemStatus,
     node::{
-        Filter,
-        action_with_item_status::ActionWithItemStatus,
-        why_in_scope_and_action_with_item_status::{WhyInScope, WhyInScopeAndActionWithItemStatus},
+        Filter, action_with_item_status::ActionWithItemStatus,
+        why_in_scope_and_action_with_item_status::WhyInScopeAndActionWithItemStatus,
     },
 };
 
@@ -201,12 +199,16 @@ impl<'s> DisplayWhyInScopeAndActionWithItemStatus<'s> {
         self.item.get_surreal_record_id()
     }
 
-    pub(crate) fn get_why_in_scope(&self) -> &HashSet<WhyInScope> {
-        self.item.get_why_in_scope()
-    }
-
     pub(crate) fn clone_to_surreal_action(&self) -> SurrealAction {
         self.item.clone_to_surreal_action()
+    }
+}
+
+impl<'s> From<DisplayWhyInScopeAndActionWithItemStatus<'s>>
+    for &'s WhyInScopeAndActionWithItemStatus<'s>
+{
+    fn from(display: DisplayWhyInScopeAndActionWithItemStatus<'s>) -> Self {
+        display.item
     }
 }
 
