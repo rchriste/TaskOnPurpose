@@ -54,6 +54,20 @@ impl Display for FinalPriorityWizardChoice {
     }
 }
 
+enum NoSelectionChoice {
+    SelectAnItem,
+    SkipToNext,
+}
+
+impl Display for NoSelectionChoice {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            NoSelectionChoice::SelectAnItem => write!(f, "Select an item to work on"),
+            NoSelectionChoice::SkipToNext => write!(f, "Skip to next comparison"),
+        }
+    }
+}
+
 pub(crate) async fn present_priority_wizard_or_legacy<'a>(
     choices: &'a [WhyInScopeAndActionWithItemStatus<'a>],
     do_now_list: &DoNowList,
@@ -71,7 +85,7 @@ pub(crate) async fn present_priority_wizard_or_legacy<'a>(
 
     match mode_selection {
         Ok(PriorityWizardMode::PriorityWizard) => {
-            priority_wizard_loop(choices, send_to_data_storage_layer).await
+            priority_wizard_loop(choices, do_now_list, send_to_data_storage_layer).await
         }
         Ok(PriorityWizardMode::Legacy) => {
             super::present_pick_what_should_be_done_first_menu(
@@ -89,6 +103,7 @@ pub(crate) async fn present_priority_wizard_or_legacy<'a>(
 
 async fn priority_wizard_loop<'a>(
     choices: &'a [WhyInScopeAndActionWithItemStatus<'a>],
+    do_now_list: &DoNowList,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     // Track items that have been selected already
@@ -239,6 +254,70 @@ async fn priority_wizard_loop<'a>(
                     .unwrap();
 
                 selected_items.insert(lower_priority_item.get_surreal_record_id().clone());
+            }
+        } else {
+            // User didn't select any items - ask what they want to do
+            let no_selection_choice = Select::new(
+                "You didn't select any items. What would you like to do?",
+                vec![
+                    NoSelectionChoice::SelectAnItem,
+                    NoSelectionChoice::SkipToNext,
+                ],
+            )
+            .with_page_size(default_select_page_size())
+            .prompt();
+
+            match no_selection_choice {
+                Ok(NoSelectionChoice::SelectAnItem) => {
+                    // Show all unselected items including the current one for selection
+                    let all_items_for_selection: Vec<_> = unselected_items
+                        .iter()
+                        .map(|item| {
+                            DisplayWhyInScopeAndActionWithItemStatus::new(
+                                item,
+                                Filter::Active,
+                                DisplayFormat::SingleLine,
+                            )
+                        })
+                        .collect();
+
+                    let item_selection = Select::new(
+                        "Which item would you like to work on?",
+                        all_items_for_selection,
+                    )
+                    .with_page_size(default_select_page_size())
+                    .prompt();
+
+                    match item_selection {
+                        Ok(selected_display) => {
+                            // Route to the appropriate menu based on action type
+                            super::handle_item_selection(
+                                selected_display.into(),
+                                do_now_list,
+                                send_to_data_storage_layer,
+                            )
+                            .await?;
+
+                            // After returning from the menu, return Ok to refresh the main loop
+                            return Ok(());
+                        }
+                        Err(InquireError::OperationCanceled) => {
+                            // User canceled - continue to next comparison
+                        }
+                        Err(InquireError::OperationInterrupted) => return Err(()),
+                        Err(err) => {
+                            panic!("Unexpected error, try restarting the terminal: {}", err)
+                        }
+                    }
+                }
+                Ok(NoSelectionChoice::SkipToNext) => {
+                    // Continue to next comparison - do nothing
+                }
+                Err(InquireError::OperationCanceled) => {
+                    return Ok(());
+                }
+                Err(InquireError::OperationInterrupted) => return Err(()),
+                Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
             }
         }
 
