@@ -314,8 +314,8 @@ async fn priority_wizard_loop<'a>(
             let no_selection_choice = Select::new(
                 "You didn't select any items. What would you like to do?",
                 vec![
-                    NoSelectionChoice::SelectAnItem,
                     NoSelectionChoice::SkipToNext,
+                    NoSelectionChoice::SelectAnItem,
                 ],
             )
             .with_page_size(default_select_page_size())
