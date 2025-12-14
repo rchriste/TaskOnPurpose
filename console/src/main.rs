@@ -1,3 +1,5 @@
+#![warn(unused_crate_dependencies)]
+
 pub(crate) mod base_data;
 pub(crate) mod calculated_data;
 pub(crate) mod data_storage;
