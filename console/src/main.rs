@@ -18,6 +18,7 @@ use std::{
 };
 
 use crossterm::terminal::{Clear, ClearType};
+use inquire::ui::{Attributes, Color, RenderConfig, StyleSheet, Styled};
 use mimalloc::MiMalloc;
 
 use tokio::sync::mpsc;
@@ -158,6 +159,23 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     const CARGO_PKG_VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
+
+    // Keep Inquire's existing theme for prompt/help text, but make the currently highlighted
+    // option line (and its prefix) orange + bold for better visibility.
+    //
+    // Note: We use ANSI 256-color code 208 (orange) for broad terminal support.
+    let render_config: RenderConfig<'static> = RenderConfig::default()
+        .with_highlighted_option_prefix(
+            Styled::new(">")
+                .with_fg(Color::AnsiValue(208))
+                .with_attr(Attributes::BOLD),
+        )
+        .with_selected_option(Some(
+            StyleSheet::new()
+                .with_fg(Color::AnsiValue(208))
+                .with_attr(Attributes::BOLD),
+        ));
+    inquire::set_global_render_config(render_config);
 
     println!("{}Welcome to 🕜 Task On Purpose 🕜", Clear(ClearType::All));
     println!("Version {}", CARGO_PKG_VERSION.unwrap_or("UNKNOWN"));
