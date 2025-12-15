@@ -52,11 +52,14 @@ pub(crate) fn select_higher_importance_than_this(
     let list = HigherImportanceThan::create_list(items);
     let starting_position = starting_position.unwrap_or(0);
     println!();
-    let selected = Select::new("Select higher importance than this|", list)
-        .with_starting_cursor(starting_position)
-        .with_page_size(default_select_page_size())
-        .prompt()
-        .unwrap();
+    let selected = Select::new(
+        "What is the Importance? This is more important than the item you select.|",
+        list,
+    )
+    .with_starting_cursor(starting_position)
+    .with_page_size(default_select_page_size())
+    .prompt()
+    .unwrap();
     match selected {
         HigherImportanceThan::Item(display_item) => {
             let surreal_item = display_item.get_surreal_record_id();
