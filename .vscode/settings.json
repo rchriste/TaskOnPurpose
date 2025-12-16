@@ -17,6 +17,7 @@
         "gimli",
         "itertools",
         "Journalling",
+        "Lanczos",
         "meds",
         "mimalloc",
         "mkemqn",
