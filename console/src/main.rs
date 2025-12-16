@@ -1,3 +1,5 @@
+#![warn(unused_crate_dependencies)]
+
 pub(crate) mod base_data;
 pub(crate) mod calculated_data;
 pub(crate) mod data_storage;
@@ -20,6 +22,7 @@ use std::{
 use crossterm::terminal::{Clear, ClearType};
 use icy_sixel::{EncodeOptions, sixel_encode};
 use image::{imageops::FilterType, load_from_memory};
+use inquire::ui::{Attributes, Color, RenderConfig, StyleSheet, Styled};
 use mimalloc::MiMalloc;
 
 use tokio::sync::mpsc;
@@ -159,6 +162,23 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Keep Inquire's existing theme for prompt/help text, but make the currently highlighted
+    // option line (and its prefix) orange + bold for better visibility.
+    //
+    // Note: We use ANSI 256-color code 208 (orange) for broad terminal support.
+    let render_config: RenderConfig<'static> = RenderConfig::default()
+        .with_highlighted_option_prefix(
+            Styled::new(">")
+                .with_fg(Color::AnsiValue(208))
+                .with_attr(Attributes::BOLD),
+        )
+        .with_selected_option(Some(
+            StyleSheet::new()
+                .with_fg(Color::AnsiValue(208))
+                .with_attr(Attributes::BOLD),
+        ));
+    inquire::set_global_render_config(render_config);
+
     println!("{}", Clear(ClearType::All));
     print_hourglass_logo().unwrap_or_else(|err| eprintln!("Unable to display logo (sixel): {err}"));
 

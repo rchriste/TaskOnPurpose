@@ -1,3 +1,5 @@
+pub(crate) mod priority_wizard;
+
 use std::fmt::{self, Display, Formatter};
 
 use chrono::Utc;
@@ -33,6 +35,65 @@ use crate::menu::inquire::default_select_page_size;
 use super::{
     WhyInScopeAndActionWithItemStatus, do_now_list_single_item::urgency_plan::prompt_for_triggers,
 };
+
+/// Routes a selected item to the appropriate menu based on its action type
+pub(super) async fn handle_item_selection<'a>(
+    selected_item: &'a WhyInScopeAndActionWithItemStatus<'a>,
+    do_now_list: &DoNowList,
+    send_to_data_storage_layer: &Sender<DataLayerCommands>,
+) -> Result<(), ()> {
+    let why_in_scope = selected_item.get_why_in_scope();
+    let item_action = selected_item.get_action();
+
+    match item_action {
+        ActionWithItemStatus::PickItemReviewFrequency(item_status) => {
+            present_pick_item_review_frequency_menu(item_status, send_to_data_storage_layer).await
+        }
+        ActionWithItemStatus::ReviewItem(item_status) => {
+            let base_data = do_now_list.get_base_data();
+            present_review_item_menu(
+                item_status,
+                do_now_list.get_all_items_status(),
+                base_data,
+                send_to_data_storage_layer,
+            )
+            .await
+        }
+        ActionWithItemStatus::MakeProgress(item_status) => {
+            if item_status.is_person_or_group() {
+                present_is_person_or_group_around_menu(
+                    item_status.get_item_node(),
+                    send_to_data_storage_layer,
+                )
+                .await
+            } else {
+                Box::pin(present_do_now_list_item_selected(
+                    item_status,
+                    why_in_scope,
+                    chrono::Utc::now(),
+                    do_now_list,
+                    send_to_data_storage_layer,
+                ))
+                .await
+            }
+        }
+        ActionWithItemStatus::ItemNeedsAClassification(item_status) => {
+            present_item_needs_a_classification_menu(item_status, send_to_data_storage_layer).await
+        }
+        ActionWithItemStatus::SetReadyAndUrgency(item_status) => {
+            let base_data = do_now_list.get_base_data();
+            present_set_ready_and_urgency_plan_menu(
+                item_status,
+                base_data,
+                send_to_data_storage_layer,
+            )
+            .await
+        }
+        ActionWithItemStatus::ParentBackToAMotivation(item_status) => {
+            present_parent_back_to_a_motivation_menu(item_status, send_to_data_storage_layer).await
+        }
+    }
+}
 
 enum HighestOrLowest {
     PickThisTime,
@@ -134,68 +195,11 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
             return Ok(());
         }
         HighestOrLowest::PickThisTime => {
-            let why_in_scope = choice.get_why_in_scope();
-            let item_action = choice.get_action();
-            match item_action {
-                ActionWithItemStatus::PickItemReviewFrequency(item_status) => {
-                    return present_pick_item_review_frequency_menu(
-                        item_status,
-                        send_to_data_storage_layer,
-                    )
-                    .await;
-                }
-                ActionWithItemStatus::ReviewItem(item_status) => {
-                    let base_data = do_now_list.get_base_data();
-                    return present_review_item_menu(
-                        item_status,
-                        do_now_list.get_all_items_status(),
-                        base_data,
-                        send_to_data_storage_layer,
-                    )
-                    .await;
-                }
-                ActionWithItemStatus::MakeProgress(item_status) => {
-                    if item_status.is_person_or_group() {
-                        return present_is_person_or_group_around_menu(
-                            item_status.get_item_node(),
-                            send_to_data_storage_layer,
-                        )
-                        .await;
-                    } else {
-                        return Box::pin(present_do_now_list_item_selected(
-                            item_status,
-                            why_in_scope,
-                            chrono::Utc::now(),
-                            do_now_list,
-                            send_to_data_storage_layer,
-                        ))
-                        .await;
-                    }
-                }
-                ActionWithItemStatus::ItemNeedsAClassification(item_status) => {
-                    return present_item_needs_a_classification_menu(
-                        item_status,
-                        send_to_data_storage_layer,
-                    )
-                    .await;
-                }
-                ActionWithItemStatus::SetReadyAndUrgency(item_status) => {
-                    let base_data = do_now_list.get_base_data();
-                    return present_set_ready_and_urgency_plan_menu(
-                        item_status,
-                        base_data,
-                        send_to_data_storage_layer,
-                    )
-                    .await;
-                }
-                ActionWithItemStatus::ParentBackToAMotivation(item_status) => {
-                    return present_parent_back_to_a_motivation_menu(
-                        item_status,
-                        send_to_data_storage_layer,
-                    )
-                    .await;
-                }
-            }
+            // Get the inner WhyInScopeAndActionWithItemStatus from the display wrapper
+            let original_choice = choice.into();
+
+            return handle_item_selection(original_choice, do_now_list, send_to_data_storage_layer)
+                .await;
         }
     };
 

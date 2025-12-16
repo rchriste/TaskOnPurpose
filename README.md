@@ -70,3 +70,10 @@ Because it takes a while to build I will generally use the older version of _On 
 ### Using On Purpose with Windows Terminal
 
 In order for the Emoji and Unicode char to display properly you need to enable the new "Atlas" rendering engine. Go to Settings -> Rendering -> Engine and turn on `Use the new Text Render ("AtlasEngine")`
+
+### Entering dates and times (quick tip)
+
+When the app prompts for a date/time you can type relative phrases. Examples:
+- `Tomorrow 3pm` schedules for tomorrow at 3pm.
+- `Next day 3pm` works the same as `Tomorrow 3pm` (new alias).
+- Short times like `9am` assume today; full dates like `1/15/2025 4pm` also work.
