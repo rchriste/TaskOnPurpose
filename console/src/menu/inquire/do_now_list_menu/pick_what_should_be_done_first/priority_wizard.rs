@@ -221,8 +221,8 @@ async fn priority_wizard_loop<'a>(
         let action_choice = Select::new(
             "What would you like to do with this item?",
             vec![
-                ItemActionChoice::DoItNow,
                 ItemActionChoice::PrioritizeIt,
+                ItemActionChoice::DoItNow,
                 ItemActionChoice::NextItem,
             ],
         )

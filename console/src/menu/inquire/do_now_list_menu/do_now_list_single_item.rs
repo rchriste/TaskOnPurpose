@@ -85,7 +85,7 @@ impl Display for DoNowListSingleItemSelection<'_> {
                 write!(f, "⇄ Select larger Reason: {}", parent_item)
             }
             Self::StateASmallerAction => {
-                write!(f, "State a smaller Action")
+                write!(f, "State a smaller Action (i.e. time spent on smaller item counts towards this item)")
             }
             Self::ReviewItem => write!(f, "Review Item"),
             Self::ParentToItem => {
@@ -98,7 +98,7 @@ impl Display for DoNowListSingleItemSelection<'_> {
             Self::RemoveParent(parent_item, _) => write!(f, "🚫 Remove reason: {}", parent_item),
             Self::DebugPrintItem => write!(f, "Debug Print Item"),
             Self::SomethingElseShouldBeDoneFirst => {
-                write!(f, "Something else should be done first")
+                write!(f, "Something else should be done first (i.e. time spent on something else does not count towards this item)")
             }
             Self::ChangeItemType { current } => {
                 let current_item_type = DisplayItemType::new(DisplayStyle::Full, current);
