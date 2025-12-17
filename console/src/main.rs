@@ -257,7 +257,7 @@ fn print_hourglass_logo() -> Result<(), Box<dyn std::error::Error>> {
     let canvas = load_from_memory(include_bytes!("logo/hourglass_logo.png"))?.to_rgba8();
 
     // Keep the original aspect; only scale down if needed.
-    let resized = resize_to_fit(&canvas, 260, 520);
+    let resized = resize_to_fit(&canvas, 130, 260);
 
     let encode_opts = EncodeOptions {
         max_colors: 256,
