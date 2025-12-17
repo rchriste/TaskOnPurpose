@@ -18,9 +18,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-
 use crossterm::terminal::{Clear, ClearType};
-use icy_sixel::{EncodeOptions, sixel_encode};
+use icy_sixel::{EncodeOptions, QuantizeMethod, sixel_encode};
 use image::{imageops::FilterType, load_from_memory};
 use inquire::ui::{Attributes, Color, RenderConfig, StyleSheet, Styled};
 use mimalloc::MiMalloc;
@@ -254,17 +253,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
 fn print_hourglass_logo() -> Result<(), Box<dyn std::error::Error>> {
-    let canvas =
-        load_from_memory(include_bytes!("logo/hourglass_logo.png"))?.to_rgba8();
+    let canvas = load_from_memory(include_bytes!("logo/hourglass_logo.png"))?.to_rgba8();
 
     // Keep the original aspect; only scale down if needed.
     let resized = resize_to_fit(&canvas, 260, 520);
 
     let encode_opts = EncodeOptions {
         max_colors: 256,
-        quality: 100,
+        diffusion: 0.5, //Reduced dithering, less noise, good for graphics Higher values produce smoother gradients but may introduce noise. Lower values preserve sharp edges but may show color banding. Values are clamped to the range 0.0-1.0.
+        quantize_method: QuantizeMethod::Wu,
     };
     let sixel = sixel_encode(
         resized.as_raw(),
@@ -279,14 +277,8 @@ fn print_hourglass_logo() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
-
 // Keep aspect ratio; shrink if larger than provided limits.
-fn resize_to_fit(
-    img: &image::RgbaImage,
-    max_width: u32,
-    max_height: u32,
-) -> image::RgbaImage {
+fn resize_to_fit(img: &image::RgbaImage, max_width: u32, max_height: u32) -> image::RgbaImage {
     let (w, h) = img.dimensions();
     let scale_w = max_width as f32 / w as f32;
     let scale_h = max_height as f32 / h as f32;
@@ -300,4 +292,3 @@ fn resize_to_fit(
     let new_h = (h as f32 * scale).round().max(1.0) as u32;
     image::imageops::resize(img, new_w, new_h, FilterType::Lanczos3)
 }
-
