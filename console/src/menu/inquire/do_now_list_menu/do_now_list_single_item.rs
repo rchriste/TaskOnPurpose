@@ -203,6 +203,10 @@ pub(crate) async fn present_do_now_list_item_selected(
     println!();
     print_time_spent(menu_for, do_now_list);
     println!("Selected Item:");
+    if let Some(urgency) = menu_for.get_urgency_now() {
+        let display_urgency = DisplayUrgency::new(urgency, DisplayStyle::Abbreviated);
+        println!("Urgency: {}", display_urgency);
+    }
     println!(
         "{}",
         DisplayItemNode::new(
