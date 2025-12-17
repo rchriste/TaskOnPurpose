@@ -14,10 +14,13 @@ pub(crate) mod systems;
 
 use std::{
     env,
+    io::{self, Write},
     time::{Duration, SystemTime},
 };
 
 use crossterm::terminal::{Clear, ClearType};
+use icy_sixel::{EncodeOptions, QuantizeMethod, sixel_encode};
+use image::{imageops::FilterType, load_from_memory};
 use inquire::ui::{Attributes, Color, RenderConfig, StyleSheet, Styled};
 use mimalloc::MiMalloc;
 
@@ -158,8 +161,6 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    const CARGO_PKG_VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
-
     // Keep Inquire's existing theme for prompt/help text, but make the currently highlighted
     // option line (and its prefix) orange + bold for better visibility.
     //
@@ -177,7 +178,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ));
     inquire::set_global_render_config(render_config);
 
-    println!("{}Welcome to 🕜 Task On Purpose 🕜", Clear(ClearType::All));
+    println!("{}", Clear(ClearType::All));
+    print_hourglass_logo().unwrap_or_else(|err| eprintln!("Unable to display logo (sixel): {err}"));
+
+    const CARGO_PKG_VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
+
+    println!("Welcome to 🕜 Task On Purpose 🕜");
     println!("Version {}", CARGO_PKG_VERSION.unwrap_or("UNKNOWN"));
 
     let commands_in_flight_limit = 20;
@@ -245,4 +251,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Done");
 
     Ok(())
+}
+
+fn print_hourglass_logo() -> Result<(), Box<dyn std::error::Error>> {
+    let canvas = load_from_memory(include_bytes!("logo/hourglass_logo.png"))?.to_rgba8();
+
+    // Keep the original aspect; only scale down if needed.
+    let resized = resize_to_fit(&canvas, 260, 520);
+
+    let encode_opts = EncodeOptions {
+        max_colors: 256,
+        diffusion: 0.5, //Reduced dithering, less noise, good for graphics Higher values produce smoother gradients but may introduce noise. Lower values preserve sharp edges but may show color banding. Values are clamped to the range 0.0-1.0.
+        quantize_method: QuantizeMethod::Wu,
+    };
+    let sixel = sixel_encode(
+        resized.as_raw(),
+        resized.width() as usize,
+        resized.height() as usize,
+        &encode_opts,
+    )?;
+    let mut stdout = io::stdout().lock();
+    stdout.write_all(sixel.as_bytes())?;
+    stdout.write_all(b"\n")?;
+    stdout.flush()?;
+    Ok(())
+}
+
+// Keep aspect ratio; shrink if larger than provided limits.
+fn resize_to_fit(img: &image::RgbaImage, max_width: u32, max_height: u32) -> image::RgbaImage {
+    let (w, h) = img.dimensions();
+    let scale_w = max_width as f32 / w as f32;
+    let scale_h = max_height as f32 / h as f32;
+    let scale = scale_w.min(scale_h).min(1.0);
+
+    if scale >= 1.0 {
+        return img.clone();
+    }
+
+    let new_w = (w as f32 * scale).round().max(1.0) as u32;
+    let new_h = (h as f32 * scale).round().max(1.0) as u32;
+    image::imageops::resize(img, new_w, new_h, FilterType::Lanczos3)
 }
