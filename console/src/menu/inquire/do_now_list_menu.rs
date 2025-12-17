@@ -20,7 +20,6 @@ use inquire::{InquireError, Select};
 use itertools::chain;
 use parent_back_to_a_motivation::present_parent_back_to_a_motivation_menu;
 use pick_item_review_frequency::present_pick_item_review_frequency_menu;
-use pick_what_should_be_done_first::present_pick_what_should_be_done_first_menu;
 use review_item::present_review_item_menu;
 use search::present_search_menu;
 use surrealdb::RecordId;
@@ -411,14 +410,14 @@ pub(crate) async fn present_do_now_list_menu(
             }
         }
         Ok(InquireDoNowListItem::DoNowListSingleItem(selected)) => match selected {
-            UrgencyLevelItemWithItemStatus::MultipleItems(choices) => {
-                present_pick_what_should_be_done_first_menu(
+            UrgencyLevelItemWithItemStatus::MultipleItems(choices) => Box::pin(
+                pick_what_should_be_done_first::priority_wizard::present_priority_wizard_or_legacy(
                     choices,
                     do_now_list,
                     send_to_data_storage_layer,
-                )
-                .await
-            }
+                ),
+            )
+            .await,
             UrgencyLevelItemWithItemStatus::SingleItem(
                 why_in_scope_and_action_with_item_status,
             ) => {

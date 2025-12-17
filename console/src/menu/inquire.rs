@@ -4,6 +4,7 @@ use lazy_static::lazy_static;
 use chrono::{DateTime, Datelike, Duration, Local, NaiveTime, TimeZone};
 use crossterm::terminal;
 use regex::{Regex, RegexBuilder};
+use std::borrow::Cow;
 
 pub(crate) mod back_menu;
 pub(crate) mod do_now_list_menu;
@@ -31,7 +32,7 @@ pub(crate) fn default_select_page_size() -> usize {
 fn parse_exact_or_relative_datetime_help_string() -> &'static str {
     concat!(
         "Enter an exact time or a time relative to now. Examples:\n",
-        "\"3:00pm\" or \"3pm\", for today at 3:00pm or type \"Tomorrow 3pm\" for tomorrow at 3:00pm\n",
+        "\"3:00pm\" or \"3pm\", for today at 3:00pm or type \"Tomorrow 3pm\" or \"Next day 3pm\" for tomorrow at 3:00pm\n",
         "\"Mon 3:15pm\" for Monday of this week at 3pm. Or you can say \"next Mon 5pm\" for next week's Monday\n",
         "You can also say \"last Mon 5pm\" for last week's Monday\n",
         "Full dates also work like \"1/15/2025 4:15pm\" or \"2/13/2025 4pm\"\n",
@@ -41,7 +42,28 @@ fn parse_exact_or_relative_datetime_help_string() -> &'static str {
     )
 }
 
+fn normalize_next_day_to_tomorrow(input: &str) -> Cow<'_, str> {
+    // "next" already means "add a week" in the weekday parser (e.g., "next Mon"),
+    // so treating "next day" as "tomorrow" here keeps that mental model intact
+    // while still offering the convenience alias without changing other "next"
+    // semantics. We normalize up front to reuse the existing "Tomorrow" branch.
+    lazy_static! {
+        static ref NEXT_DAY_RE: Regex = RegexBuilder::new(r"^\s*next\s+day\b(.*)$")
+            .case_insensitive(true)
+            .build()
+            .expect("Regex is valid");
+    }
+    if let Some(captures) = NEXT_DAY_RE.captures(input) {
+        let suffix = captures.get(1).map(|m| m.as_str()).unwrap_or("");
+        Cow::Owned(format!("Tomorrow{}", suffix))
+    } else {
+        Cow::Borrowed(input)
+    }
+}
+
 fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
+    let normalized_input = normalize_next_day_to_tomorrow(input);
+    let input = normalized_input.as_ref();
     lazy_static! {
         static ref relative_parser: CustomDurationParser<'static> = CustomDurationParser::builder()
             .allow_time_unit_delimiter()
@@ -1403,7 +1425,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_exact_or_relative_datetime_tomorrow_plus_time_is_tomorrow_at_that_time() {
+    fn test_parse_exact_or_relative_datetime_tomorrow_or_next_day_plus_time_is_tomorrow_at_that_time()
+     {
         assert_eq!(
             parse_exact_or_relative_datetime("Tomorrow"),
             Some(
@@ -1420,7 +1443,68 @@ mod tests {
         );
 
         assert_eq!(
+            parse_exact_or_relative_datetime("Next day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
             parse_exact_or_relative_datetime("Tomorrow 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("Next day 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        // Test case-insensitive variants of "Next day"
+        assert_eq!(
+            parse_exact_or_relative_datetime("NEXT DAY 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("next day 3pm"),
             Some(
                 Local
                     .from_local_datetime(

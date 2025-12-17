@@ -1,6 +1,6 @@
 [package]
 name = "taskonpurpose"
-version = "0.1.139"
+version = "0.1.149"
 edition = "2024"
 
 [dependencies]
@@ -23,6 +23,9 @@ crossterm = "0.29.0" #Added so I can use RATATUI
 rand = "0.9.0" #So I can pick a random priority
 ahash = "0.8.11" #Because it is 10x faster than Rust's built in hasher
 mimalloc = "0.1.43" #Because allocation performance shows up in performance measurements, this seems to give about a %15 perf improvement when running calculated data
+# Use my branch until the bug fix for Windows terminal is pulled in
+icy_sixel = { git = "https://github.com/rchriste/icy_sixel" } #Render sixel images in terminals that support it
+image = { version = "0.25.5", default-features = false, features = ["png"] } #Decode the PNG logo for sixel output
 
 # Possible libraries intended to use to make querying SurrealDB easier, but I also looked at these some and I am not
 # sure as it seems to require that you come up with your own RecordId without the ability to specify NONE to get 
