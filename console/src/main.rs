@@ -277,7 +277,22 @@ fn print_hourglass_logo() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Keep aspect ratio; shrink if larger than provided limits.
+/// Resizes an image to fit within specified dimensions while preserving aspect ratio.
+///
+/// This function only scales down images that exceed the specified dimensions - it will never
+/// scale up a smaller image. If the image is already smaller than or equal to the maximum
+/// dimensions, it returns a clone of the original image unchanged.
+///
+/// # Arguments
+///
+/// * `img` - The source image to resize
+/// * `max_width` - Maximum width constraint in pixels
+/// * `max_height` - Maximum height constraint in pixels
+///
+/// # Returns
+///
+/// A new `RgbaImage` that fits within the specified dimensions while maintaining the original
+/// aspect ratio. If no resizing is needed, returns a clone of the input image.
 fn resize_to_fit(img: &image::RgbaImage, max_width: u32, max_height: u32) -> image::RgbaImage {
     let (w, h) = img.dimensions();
     let scale_w = max_width as f32 / w as f32;
