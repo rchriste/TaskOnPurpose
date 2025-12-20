@@ -253,6 +253,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Prints the OnPurpose hourglass logo to stdout as a sixel-encoded image.
+///
+/// This function loads the embedded PNG logo, resizes it to fit within terminal dimensions,
+/// and outputs it using the sixel graphics format. The terminal must support sixel graphics
+/// for the image to display correctly (e.g., Windows Terminal with Atlas rendering engine,
+/// or terminals like mlterm, wezterm, or xterm with sixel support).
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - The embedded logo image cannot be loaded or decoded
+/// - Image resizing or sixel encoding fails
+/// - Writing to stdout fails
 fn print_hourglass_logo() -> Result<(), Box<dyn std::error::Error>> {
     let canvas = load_from_memory(include_bytes!("logo/hourglass_logo.png"))?.to_rgba8();
 
