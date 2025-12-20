@@ -20,7 +20,10 @@ use std::{
 
 use crossterm::terminal::{Clear, ClearType};
 use icy_sixel::{EncodeOptions, QuantizeMethod, sixel_encode};
-use image::{imageops::FilterType, load_from_memory};
+use image::{
+    imageops::{self, FilterType},
+    load_from_memory,
+};
 use inquire::ui::{Attributes, Color, RenderConfig, StyleSheet, Styled};
 use mimalloc::MiMalloc;
 
@@ -270,7 +273,7 @@ fn print_hourglass_logo() -> Result<(), Box<dyn std::error::Error>> {
     let canvas = load_from_memory(include_bytes!("logo/hourglass_logo.png"))?.to_rgba8();
 
     // Keep the original aspect; only scale down if needed.
-    let resized = resize_to_fit(&canvas, 130, 260);
+    let resized = resize_to_fit(canvas, 130, 260);
 
     let encode_opts = EncodeOptions {
         max_colors: 256,
@@ -305,18 +308,18 @@ fn print_hourglass_logo() -> Result<(), Box<dyn std::error::Error>> {
 /// # Returns
 ///
 /// A new `RgbaImage` that fits within the specified dimensions while maintaining the original
-/// aspect ratio. If no resizing is needed, returns a clone of the input image.
-fn resize_to_fit(img: &image::RgbaImage, max_width: u32, max_height: u32) -> image::RgbaImage {
+/// aspect ratio. If no resizing is needed, returns the input image.
+fn resize_to_fit(img: image::RgbaImage, max_width: u32, max_height: u32) -> image::RgbaImage {
     let (w, h) = img.dimensions();
     let scale_w = max_width as f32 / w as f32;
     let scale_h = max_height as f32 / h as f32;
     let scale = scale_w.min(scale_h).min(1.0);
 
     if scale >= 1.0 {
-        return img.clone();
+        img
+    } else {
+        let new_w = (w as f32 * scale).round().max(1.0) as u32;
+        let new_h = (h as f32 * scale).round().max(1.0) as u32;
+        imageops::resize(&img, new_w, new_h, FilterType::Lanczos3)
     }
-
-    let new_w = (w as f32 * scale).round().max(1.0) as u32;
-    let new_h = (h as f32 * scale).round().max(1.0) as u32;
-    image::imageops::resize(img, new_w, new_h, FilterType::Lanczos3)
 }
