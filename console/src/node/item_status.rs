@@ -369,6 +369,10 @@ impl<'s> ItemStatus<'s> {
         self.item_node.has_children(filter)
     }
 
+    pub(crate) fn get_finished_at(&self) -> &Option<DateTime<Utc>> {
+        self.item_node.get_finished_at()
+    }
+
     pub(crate) fn get_children(
         &'s self,
         filter: Filter,

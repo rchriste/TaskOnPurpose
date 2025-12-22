@@ -332,6 +332,10 @@ impl<'s> ItemNode<'s> {
         has_parents(&self.parents, filter)
     }
 
+    pub(crate) fn get_finished_at(&self) -> &Option<DateTime<Utc>> {
+        self.item.get_finished_at()
+    }
+
     pub(crate) fn get_parents(
         &'s self,
         filter: Filter,

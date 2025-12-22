@@ -45,6 +45,9 @@ pub(crate) enum DataLayerCommands {
         item: RecordId,
         when_finished: Datetime,
     },
+    ReactivateItem {
+        item: RecordId,
+    },
     NewItem(NewItem),
     NewMode(NewMode),
     CoverItemWithANewItem {
@@ -197,6 +200,7 @@ pub(crate) async fn data_storage_start_and_run(
                 item,
                 when_finished,
             }) => finish_item(item, when_finished, &db).await,
+            Some(DataLayerCommands::ReactivateItem { item }) => reactivate_item(item, &db).await,
             Some(DataLayerCommands::NewItem(new_item)) => {
                 create_new_item(new_item, &db).await;
             }
@@ -842,6 +846,16 @@ pub(crate) async fn finish_item(finish_this: RecordId, when_finished: Datetime, 
         .unwrap()
         .unwrap();
     assert_eq!(updated.finished, Some(when_finished));
+}
+
+pub(crate) async fn reactivate_item(reactivate_this: RecordId, db: &Surreal<Any>) {
+    let updated: SurrealItem = db
+        .update(&reactivate_this)
+        .patch(PatchOp::replace("/finished", None::<Datetime>))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.finished, None);
 }
 
 async fn create_new_item(mut new_item: NewItem, db: &Surreal<Any>) -> SurrealItem {

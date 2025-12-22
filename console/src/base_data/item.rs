@@ -2,10 +2,7 @@ use std::time::Duration;
 
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
-use surrealdb::{
-    RecordId,
-    sql::{self, Datetime},
-};
+use surrealdb::{RecordId, sql::Datetime};
 
 use crate::{
     calculated_data::parent_lookup::ParentLookup,
@@ -23,6 +20,7 @@ pub(crate) struct Item<'s> {
     surreal_item: &'s SurrealItem,
     now: &'s DateTime<Utc>,
     now_sql: Datetime,
+    finished: Option<DateTime<Utc>>,
 }
 
 impl<'a> From<&'a Item<'a>> for &'a SurrealItem {
@@ -91,11 +89,13 @@ impl PartialEq for Item<'_> {
 impl<'b> Item<'b> {
     pub(crate) fn new(surreal_item: &'b SurrealItem, now: &'b DateTime<Utc>) -> Self {
         let now_sql = (*now).into();
+        let finished = surreal_item.finished.as_ref().map(|dt| dt.to_utc());
         Self {
             id: surreal_item.id.as_ref().expect("Already in DB"),
             surreal_item,
             now,
             now_sql,
+            finished,
         }
     }
 
@@ -108,11 +108,11 @@ impl<'b> Item<'b> {
     }
 
     pub(crate) fn is_finished(&self) -> bool {
-        self.surreal_item.finished.is_some()
+        self.finished.is_some()
     }
 
-    pub(crate) fn get_finished_at(&self) -> &Option<sql::Datetime> {
-        &self.surreal_item.finished
+    pub(crate) fn get_finished_at(&self) -> &Option<DateTime<Utc>> {
+        &self.finished
     }
 
     pub(crate) fn is_active(&self) -> bool {
