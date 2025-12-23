@@ -10,11 +10,8 @@ use crate::{
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands, surreal_tables::SurrealTables,
     },
-    display::{
-        display_item::DisplayItem,
-        display_item_node::{DisplayFormat, DisplayItemNode},
-    },
-    menu::inquire::{default_select_page_size, time_spent_summary},
+    display::display_item_node::{DisplayFormat, DisplayItemNode},
+    menu::inquire::{default_select_page_size, item_children_summary, time_spent_summary},
     node::{Filter, item_status::ItemStatus},
     systems::do_now_list::DoNowList,
 };
@@ -141,7 +138,8 @@ async fn present_finished_item_detail(
         )
     );
 
-    print_children(menu_for);
+    item_children_summary::print_completed_children(menu_for);
+    item_children_summary::print_in_progress_children(menu_for, do_now_list.get_all_items_status());
 
     println!();
 
@@ -171,34 +169,5 @@ async fn present_finished_item_detail(
         }
         Err(InquireError::OperationInterrupted) => Err(()),
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
-    }
-}
-
-fn print_children(menu_for: &crate::node::item_status::ItemStatus<'_>) {
-    let mut completed_children = menu_for
-        .get_children(Filter::Finished)
-        .map(|x| x.get_item())
-        .collect::<Vec<_>>();
-    completed_children.sort_by(|a, b| a.get_finished_at().cmp(b.get_finished_at()));
-
-    if !completed_children.is_empty() {
-        println!("Completed Actions:");
-        for child in completed_children.iter().take(8) {
-            println!("  ✅{}", DisplayItem::new(child));
-        }
-        if completed_children.len() > 8 {
-            println!("  {} more ✅", completed_children.len() - 8);
-        }
-    }
-
-    let in_progress_children = menu_for
-        .get_children(Filter::Active)
-        .map(|x| x.get_item())
-        .collect::<Vec<_>>();
-    if !in_progress_children.is_empty() {
-        println!("Smaller Actions:");
-        for child in in_progress_children {
-            println!("  {}", DisplayItem::new(child));
-        }
     }
 }
