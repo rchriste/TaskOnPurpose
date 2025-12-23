@@ -415,6 +415,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::clone_on_copy)] // For testing Clone and Copy traits
     fn display_format_is_clone_and_copy() {
         // Verify DisplayFormat enum has Clone and Copy traits
         let format = DisplayFormat::MultiLineTree;

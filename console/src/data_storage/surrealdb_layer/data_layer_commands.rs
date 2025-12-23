@@ -45,6 +45,9 @@ pub(crate) enum DataLayerCommands {
         item: RecordId,
         when_finished: Datetime,
     },
+    ReactivateItem {
+        item: RecordId,
+    },
     NewItem(NewItem),
     NewMode(NewMode),
     CoverItemWithANewItem {
@@ -197,6 +200,7 @@ pub(crate) async fn data_storage_start_and_run(
                 item,
                 when_finished,
             }) => finish_item(item, when_finished, &db).await,
+            Some(DataLayerCommands::ReactivateItem { item }) => reactivate_item(item, &db).await,
             Some(DataLayerCommands::NewItem(new_item)) => {
                 create_new_item(new_item, &db).await;
             }
@@ -844,6 +848,16 @@ pub(crate) async fn finish_item(finish_this: RecordId, when_finished: Datetime, 
     assert_eq!(updated.finished, Some(when_finished));
 }
 
+pub(crate) async fn reactivate_item(reactivate_this: RecordId, db: &Surreal<Any>) {
+    let updated: SurrealItem = db
+        .update(&reactivate_this)
+        .patch(PatchOp::replace("/finished", None::<Datetime>))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.finished, None);
+}
+
 async fn create_new_item(mut new_item: NewItem, db: &Surreal<Any>) -> SurrealItem {
     for dependency in new_item.dependencies.iter_mut() {
         match dependency {
@@ -1137,12 +1151,12 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         let next_step_item = items.iter().next().map(|(_, v)| v).unwrap();
-        assert_eq!(next_step_item.is_finished(), false);
+        assert!(!next_step_item.is_finished());
 
         let when_finished = Utc::now();
         sender
             .send(DataLayerCommands::FinishItem {
-                item: next_step_item.get_surreal_record_id().clone().into(),
+                item: next_step_item.get_surreal_record_id().clone(),
                 when_finished: when_finished.into(),
             })
             .await
@@ -1154,7 +1168,83 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         let next_step_item = items.iter().next().map(|(_, v)| v).unwrap();
-        assert_eq!(next_step_item.is_finished(), true);
+        assert!(next_step_item.is_finished());
+
+        drop(sender);
+        data_storage_join_handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn reactivate_item_after_finish_clears_finished_field() {
+        let (sender, receiver) = mpsc::channel(1);
+        let data_storage_join_handle =
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
+
+        let new_next_step = NewItemBuilder::default()
+            .summary("New next step")
+            .item_type(SurrealItemType::Action)
+            .build()
+            .expect("Filled out required fields");
+        sender
+            .send(DataLayerCommands::NewItem(new_next_step))
+            .await
+            .unwrap();
+
+        // Capture the record id so we can reference it across reloads.
+        let surreal_tables = SurrealTables::new(&sender).await.unwrap();
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let item_id: RecordId = items
+            .iter()
+            .next()
+            .map(|(_, v)| v.get_surreal_record_id().clone())
+            .expect("item exists");
+
+        // Finish it
+        let when_finished = Utc::now();
+        sender
+            .send(DataLayerCommands::FinishItem {
+                item: item_id.clone(),
+                when_finished: when_finished.into(),
+            })
+            .await
+            .unwrap();
+
+        let surreal_tables = SurrealTables::new(&sender).await.unwrap();
+        assert_eq!(surreal_tables.surreal_items.len(), 1);
+        assert!(
+            surreal_tables
+                .surreal_items
+                .first()
+                .expect("exists")
+                .finished
+                .is_some()
+        ); //Make sure that the test case or scenario is valid
+
+        // Reactivate it
+        sender
+            .send(DataLayerCommands::ReactivateItem {
+                item: item_id.clone(),
+            })
+            .await
+            .unwrap();
+
+        let surreal_tables = SurrealTables::new(&sender).await.unwrap();
+        assert_eq!(surreal_tables.surreal_items.len(), 1);
+        assert!(
+            surreal_tables
+                .surreal_items
+                .first()
+                .expect("exists")
+                .finished
+                .is_none()
+        );
+
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let item = items.iter().next().map(|(_, v)| v).unwrap();
+        assert!(!item.is_finished());
+        assert!(item.get_finished_at().is_none());
 
         drop(sender);
         data_storage_join_handle.await.unwrap();

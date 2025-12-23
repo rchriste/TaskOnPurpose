@@ -1,5 +1,6 @@
 pub(crate) mod configure_modes;
 pub(crate) mod configure_settings;
+pub(crate) mod finished_items;
 
 use std::{cmp::Ordering, fmt::Display, vec};
 
@@ -40,6 +41,7 @@ use super::{
 
 enum TopMenuSelection {
     Reflection,
+    FinishedItems,
     ViewDoNowList,
     ViewImportancePriorities,
     ClearInTheMomentPriorities,
@@ -52,6 +54,7 @@ impl Display for TopMenuSelection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TopMenuSelection::Reflection => write!(f, "🤔  Reflection, what I did"),
+            TopMenuSelection::FinishedItems => write!(f, "✅  Finished items"),
             TopMenuSelection::ViewDoNowList => {
                 write!(f, "🔙  Return to Do Now List")
             }
@@ -76,6 +79,7 @@ impl TopMenuSelection {
             Self::ViewImportancePriorities,
             Self::ClearInTheMomentPriorities,
             Self::Reflection,
+            Self::FinishedItems,
             Self::ConfigureModes,
             Self::ConfigureSettings,
             Self::ViewDoNowList,
@@ -95,6 +99,9 @@ pub(crate) async fn present_back_menu(
         .prompt();
     match selection {
         Ok(TopMenuSelection::Reflection) => present_reflection(send_to_data_storage_layer).await,
+        Ok(TopMenuSelection::FinishedItems) => {
+            finished_items::present_finished_items_menu(send_to_data_storage_layer).await
+        }
         Ok(TopMenuSelection::ViewDoNowList) => {
             present_normal_do_now_list_menu(send_to_data_storage_layer).await
         }

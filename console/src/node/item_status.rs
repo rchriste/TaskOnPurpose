@@ -369,6 +369,10 @@ impl<'s> ItemStatus<'s> {
         self.item_node.has_children(filter)
     }
 
+    pub(crate) fn get_finished_at(&self) -> &Option<DateTime<Utc>> {
+        self.item_node.get_finished_at()
+    }
+
     pub(crate) fn get_children(
         &'s self,
         filter: Filter,
@@ -620,7 +624,7 @@ fn calculate_urgent_action_items<'a>(
 
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, Days, Utc};
+    use chrono::{Days, Utc};
     use tokio::sync::mpsc;
 
     use crate::{
@@ -695,7 +699,7 @@ mod tests {
             .expect("Just added this very item");
 
         //Assert
-        assert_eq!(item.has_dependencies(Filter::Active), true);
+        assert!(item.has_dependencies(Filter::Active));
 
         drop(sender);
         data_storage_join_handle.await.unwrap();
@@ -749,7 +753,7 @@ mod tests {
             .expect("Just added this very item");
 
         //Assert
-        assert_eq!(item.has_dependencies(Filter::Active), true);
+        assert!(item.has_dependencies(Filter::Active));
 
         drop(sender);
         data_storage_join_handle.await.unwrap();
@@ -768,7 +772,7 @@ mod tests {
                     .summary("Item that needs to wait until tomorrow")
                     .dependencies(vec![NewDependency::Existing(
                         SurrealDependency::AfterDateTime(
-                            DateTime::from(Utc::now())
+                            Utc::now()
                                 .checked_add_days(Days::new(1))
                                 .expect("Far from overflowing")
                                 .into(),
@@ -791,7 +795,7 @@ mod tests {
         let (_, item) = items_highest_lap_count.iter().next().unwrap();
 
         //Assert
-        assert_eq!(item.has_dependencies(Filter::Active), true);
+        assert!(item.has_dependencies(Filter::Active));
 
         drop(sender);
         data_storage_join_handle.await.unwrap();
