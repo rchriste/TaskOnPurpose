@@ -1213,27 +1213,33 @@ mod tests {
 
         let surreal_tables = SurrealTables::new(&sender).await.unwrap();
         assert_eq!(surreal_tables.surreal_items.len(), 1);
-        assert!(surreal_tables
-            .surreal_items
-            .first()
-            .expect("exists")
-            .finished
-            .is_some()); //Make sure that the test case or scenario is valid
+        assert!(
+            surreal_tables
+                .surreal_items
+                .first()
+                .expect("exists")
+                .finished
+                .is_some()
+        ); //Make sure that the test case or scenario is valid
 
         // Reactivate it
         sender
-            .send(DataLayerCommands::ReactivateItem { item: item_id.clone() })
+            .send(DataLayerCommands::ReactivateItem {
+                item: item_id.clone(),
+            })
             .await
             .unwrap();
 
         let surreal_tables = SurrealTables::new(&sender).await.unwrap();
         assert_eq!(surreal_tables.surreal_items.len(), 1);
-        assert!(surreal_tables
-            .surreal_items
-            .first()
-            .expect("exists")
-            .finished
-            .is_none());
+        assert!(
+            surreal_tables
+                .surreal_items
+                .first()
+                .expect("exists")
+                .finished
+                .is_none()
+        );
 
         let now = Utc::now();
         let items = surreal_tables.make_items(&now);
