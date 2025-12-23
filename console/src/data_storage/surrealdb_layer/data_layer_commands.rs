@@ -1175,6 +1175,77 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reactivate_item_after_finish_clears_finished_field() {
+        let (sender, receiver) = mpsc::channel(1);
+        let data_storage_join_handle =
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
+
+        let new_next_step = NewItemBuilder::default()
+            .summary("New next step")
+            .item_type(SurrealItemType::Action)
+            .build()
+            .expect("Filled out required fields");
+        sender
+            .send(DataLayerCommands::NewItem(new_next_step))
+            .await
+            .unwrap();
+
+        // Capture the record id so we can reference it across reloads.
+        let surreal_tables = SurrealTables::new(&sender).await.unwrap();
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let item_id: RecordId = items
+            .iter()
+            .next()
+            .map(|(_, v)| v.get_surreal_record_id().clone())
+            .expect("item exists")
+            .into();
+
+        // Finish it
+        let when_finished = Utc::now();
+        sender
+            .send(DataLayerCommands::FinishItem {
+                item: item_id.clone(),
+                when_finished: when_finished.into(),
+            })
+            .await
+            .unwrap();
+
+        let surreal_tables = SurrealTables::new(&sender).await.unwrap();
+        assert_eq!(surreal_tables.surreal_items.len(), 1);
+        assert!(surreal_tables
+            .surreal_items
+            .first()
+            .expect("exists")
+            .finished
+            .is_some()); //Make sure that the test case or scenario is valid
+
+        // Reactivate it
+        sender
+            .send(DataLayerCommands::ReactivateItem { item: item_id.clone() })
+            .await
+            .unwrap();
+
+        let surreal_tables = SurrealTables::new(&sender).await.unwrap();
+        assert_eq!(surreal_tables.surreal_items.len(), 1);
+        assert!(surreal_tables
+            .surreal_items
+            .first()
+            .expect("exists")
+            .finished
+            .is_none());
+
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let item = items.iter().next().map(|(_, v)| v).unwrap();
+        assert_eq!(item.is_finished(), false);
+        assert!(item.get_finished_at().is_none());
+
+        drop(sender);
+        data_storage_join_handle.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn cover_item_with_a_new_proactive_next_step() {
         let (sender, receiver) = mpsc::channel(1);
         let data_storage_join_handle =
