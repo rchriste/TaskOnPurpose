@@ -9,6 +9,7 @@ use std::borrow::Cow;
 pub(crate) mod back_menu;
 pub(crate) mod do_now_list_menu;
 pub(crate) mod select_higher_importance_than_this;
+pub(crate) mod time_spent_summary;
 pub(crate) mod update_item_summary;
 
 /// Default page size for `inquire::Select` and `inquire::MultiSelect`.

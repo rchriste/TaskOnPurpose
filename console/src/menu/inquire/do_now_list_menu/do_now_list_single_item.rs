@@ -25,9 +25,8 @@ use crate::{
         surreal_tables::SurrealTables,
     },
     display::{
-        DisplayStyle, display_duration::DisplayDuration, display_item::DisplayItem,
-        display_item_node::DisplayItemNode, display_item_type::DisplayItemType,
-        display_urgency_plan::DisplayUrgency,
+        DisplayStyle, display_item::DisplayItem, display_item_node::DisplayItemNode,
+        display_item_type::DisplayItemType, display_urgency_plan::DisplayUrgency,
     },
     menu::inquire::{
         back_menu::capture,
@@ -41,6 +40,7 @@ use crate::{
             review_item,
         },
         select_higher_importance_than_this::select_higher_importance_than_this,
+        time_spent_summary,
         update_item_summary::update_item_summary,
     },
     new_item,
@@ -207,7 +207,7 @@ pub(crate) async fn present_do_now_list_item_selected(
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     println!();
-    print_time_spent(menu_for, do_now_list);
+    time_spent_summary::print_time_spent(menu_for, do_now_list);
     println!("Selected Item:");
     if let Some(urgency) = menu_for.get_urgency_now() {
         let display_urgency = DisplayUrgency::new(urgency, DisplayStyle::Abbreviated);
@@ -388,94 +388,6 @@ pub(crate) async fn present_do_now_list_item_selected(
         | Err(InquireError::OperationCanceled) => Ok(()), //Nothing to do we just want to return to the bullet list
         Err(InquireError::OperationInterrupted) => Err(()),
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
-    }
-}
-
-fn print_time_spent(menu_for: &ItemStatus<'_>, do_now_list: &DoNowList) {
-    print!("Time Spent: ");
-    let items = vec![menu_for.get_item()];
-    let now = do_now_list.get_now();
-    let time_spent = do_now_list
-        .get_time_spent_log()
-        .iter()
-        .filter(|x| x.did_work_towards_any(&items))
-        .collect::<Vec<_>>();
-    if time_spent.is_empty() {
-        println!("None");
-    } else {
-        println!();
-        let a_day_ago = *now - chrono::Duration::days(1);
-        let last_day = time_spent
-            .iter()
-            .filter(|x| x.is_within(&a_day_ago, now))
-            .fold((chrono::Duration::default(), 0), |acc, x| {
-                (acc.0 + x.get_time_delta(), acc.1 + 1)
-            });
-        let a_week_ago = *now - chrono::Duration::weeks(1);
-        let last_week = time_spent
-            .iter()
-            .filter(|x| x.is_within(&a_week_ago, now))
-            .fold((chrono::Duration::default(), 0), |acc, x| {
-                (acc.0 + x.get_time_delta(), acc.1 + 1)
-            });
-        let a_month_ago = *now - chrono::Duration::weeks(4);
-        let last_month = time_spent
-            .iter()
-            .filter(|x| x.is_within(&a_month_ago, now))
-            .fold((chrono::Duration::default(), 0), |acc, x| {
-                (acc.0 + x.get_time_delta(), acc.1 + 1)
-            });
-        let total = time_spent
-            .iter()
-            .fold((chrono::Duration::default(), 0), |acc, x| {
-                (acc.0 + x.get_time_delta(), acc.1 + 1)
-            });
-
-        if last_day.1 != total.1 {
-            print!("    Last Day: ");
-            if last_day.1 == 0 {
-                println!("None");
-            } else {
-                println!(
-                    "{} times for {}",
-                    last_day.1,
-                    DisplayDuration::new(&last_day.0.to_std().expect("Can convert"))
-                );
-            }
-        }
-
-        if last_week.1 != last_day.1 {
-            print!("    Last Week: ");
-            if last_week.1 == 0 {
-                println!("None");
-            } else {
-                println!(
-                    "{} times for {}",
-                    last_week.1,
-                    DisplayDuration::new(&last_week.0.to_std().expect("Can convert"))
-                );
-            }
-        }
-
-        if last_month.1 != last_week.1 {
-            print!("    Last Month: ");
-            if last_month.1 == 0 {
-                println!("None");
-            } else {
-                println!(
-                    "{} times for {}",
-                    last_month.1,
-                    DisplayDuration::new(&last_month.0.to_std().expect("Can convert"))
-                );
-            }
-        }
-
-        println!(
-            "    TOTAL: {} times for {}",
-            total.1,
-            DisplayDuration::new(&total.0.to_std().expect("Can convert"))
-        );
-        println!();
     }
 }
 
