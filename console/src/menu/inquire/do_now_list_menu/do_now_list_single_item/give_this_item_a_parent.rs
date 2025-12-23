@@ -242,7 +242,7 @@ mod tests {
             &time_spent_log,
         );
 
-        let nodes = vec![zebra_node, apple_node, goal_node];
+        let nodes = [zebra_node, apple_node, goal_node];
 
         let mut display_nodes = nodes
             .iter()

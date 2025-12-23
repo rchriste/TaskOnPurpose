@@ -1151,12 +1151,12 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         let next_step_item = items.iter().next().map(|(_, v)| v).unwrap();
-        assert_eq!(next_step_item.is_finished(), false);
+        assert!(!next_step_item.is_finished());
 
         let when_finished = Utc::now();
         sender
             .send(DataLayerCommands::FinishItem {
-                item: next_step_item.get_surreal_record_id().clone().into(),
+                item: next_step_item.get_surreal_record_id().clone(),
                 when_finished: when_finished.into(),
             })
             .await
@@ -1168,7 +1168,7 @@ mod tests {
 
         assert_eq!(items.len(), 1);
         let next_step_item = items.iter().next().map(|(_, v)| v).unwrap();
-        assert_eq!(next_step_item.is_finished(), true);
+        assert!(next_step_item.is_finished());
 
         drop(sender);
         data_storage_join_handle.await.unwrap();
@@ -1198,8 +1198,7 @@ mod tests {
             .iter()
             .next()
             .map(|(_, v)| v.get_surreal_record_id().clone())
-            .expect("item exists")
-            .into();
+            .expect("item exists");
 
         // Finish it
         let when_finished = Utc::now();
@@ -1244,7 +1243,7 @@ mod tests {
         let now = Utc::now();
         let items = surreal_tables.make_items(&now);
         let item = items.iter().next().map(|(_, v)| v).unwrap();
-        assert_eq!(item.is_finished(), false);
+        assert!(!item.is_finished());
         assert!(item.get_finished_at().is_none());
 
         drop(sender);

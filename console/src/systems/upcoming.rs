@@ -264,7 +264,7 @@ mod tests {
         let result = Upcoming::new(&calculated_data, &now);
 
         //Assert
-        assert_eq!(result.has_conflicts(), true);
+        assert!(result.has_conflicts());
 
         drop(sender);
         data_storage_join_handle.await.expect("Should pass");

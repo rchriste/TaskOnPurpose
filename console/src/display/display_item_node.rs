@@ -338,7 +338,7 @@ mod tests {
             result
         );
         assert!(
-            result.contains("┃") == false,
+            !result.contains("┃"),
             "Should not contain tree vertical lines as all items have a single parent, got: {}",
             result
         );
@@ -432,7 +432,7 @@ mod tests {
             result
         );
         assert!(
-            result.contains("┃") == false,
+            !result.contains("┃"),
             "Should not contain tree vertical lines as all items have a single parent, got: {}",
             result
         );

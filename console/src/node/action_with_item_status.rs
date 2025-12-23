@@ -799,12 +799,12 @@ mod tests {
                     vec![second_item_action.clone(), third_item_action.clone(),].len()
                 );
                 assert!(
-                    vec![second_item_action.clone(), third_item_action.clone()]
+                    [second_item_action.clone(), third_item_action.clone()]
                         .iter()
                         .any(|x| vec[0].get_action() == x.get_action())
                 );
                 assert!(
-                    vec![second_item_action.clone(), third_item_action.clone()]
+                    [second_item_action.clone(), third_item_action.clone()]
                         .iter()
                         .any(|x| vec[1].get_action() == x.get_action())
                 );

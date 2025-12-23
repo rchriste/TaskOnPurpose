@@ -927,8 +927,7 @@ mod tests {
         assert_eq!(next_step_nodes.len(), 3);
         assert_eq!(
             next_step_nodes
-                .iter()
-                .next()
+                .first()
                 .unwrap()
                 .create_parent_chain(Filter::Active)
                 .len(),
@@ -990,7 +989,7 @@ mod tests {
         assert_eq!(
             next_step_nodes
                 .iter()
-                .filter(|x| x.has_dependencies(Filter::Active) == false)
+                .filter(|x| !x.has_dependencies(Filter::Active))
                 .count(),
             0
         );
