@@ -66,7 +66,9 @@ impl Display for ItemActionChoice {
         match self {
             ItemActionChoice::DoItNow => write!(f, "Do this item now (quick task)"),
             ItemActionChoice::PrioritizeIt => write!(f, "Prioritize this item"),
-            ItemActionChoice::LegacyMode => write!(f, "Directly pick what to work on now from a list"),
+            ItemActionChoice::LegacyMode => {
+                write!(f, "Directly pick what to work on now from a list")
+            }
             ItemActionChoice::NextItem => write!(f, "Skip to next item"),
         }
     }
