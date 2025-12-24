@@ -50,14 +50,7 @@ pub(super) async fn handle_item_selection<'a>(
             present_pick_item_review_frequency_menu(item_status, send_to_data_storage_layer).await
         }
         ActionWithItemStatus::ReviewItem(item_status) => {
-            let base_data = do_now_list.get_base_data();
-            present_review_item_menu(
-                item_status,
-                do_now_list.get_all_items_status(),
-                base_data,
-                send_to_data_storage_layer,
-            )
-            .await
+            present_review_item_menu(item_status, send_to_data_storage_layer).await
         }
         ActionWithItemStatus::MakeProgress(item_status) => {
             if item_status.is_person_or_group() {

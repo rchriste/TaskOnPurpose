@@ -306,14 +306,7 @@ pub(crate) async fn present_do_now_list_item_selected(
                 .await
         }
         Ok(DoNowListSingleItemSelection::ReviewItem) => {
-            let base_data = do_now_list.get_base_data();
-            review_item::present_review_item_menu(
-                menu_for,
-                do_now_list.get_all_items_status(),
-                base_data,
-                send_to_data_storage_layer,
-            )
-            .await
+            review_item::present_review_item_menu(menu_for, send_to_data_storage_layer).await
         }
         Ok(DoNowListSingleItemSelection::WorkedOnThis) => {
             let base_data = do_now_list.get_base_data();
