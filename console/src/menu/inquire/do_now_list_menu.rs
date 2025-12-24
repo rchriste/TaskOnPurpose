@@ -411,7 +411,7 @@ pub(crate) async fn present_do_now_list_menu(
         }
         Ok(InquireDoNowListItem::DoNowListSingleItem(selected)) => match selected {
             UrgencyLevelItemWithItemStatus::MultipleItems(choices) => Box::pin(
-                pick_what_should_be_done_first::priority_wizard::present_priority_wizard_or_legacy(
+                pick_what_should_be_done_first::priority_wizard::priority_wizard_loop(
                     choices,
                     do_now_list,
                     send_to_data_storage_layer,
