@@ -240,7 +240,7 @@ pub(crate) async fn priority_wizard_loop<'a>(
 
         // Ask which items this is higher priority than
         let selected_from = MultiSelect::new(
-            "Which items is this HIGHER priority than? (Space: select item, Left Arrow: deselect all, Right Arrow: select all, Enter: done. Select no items to skip/choose a different item.)",
+            "Which items is this HIGHER priority than? (Space: select item, Left Arrow: deselect all, Right Arrow: select all, Enter: done. If you select none, you'll be asked which items it is LOWER priority than.)",
             comparison_choices.clone(),
         )
         .with_page_size(default_select_page_size())
@@ -255,8 +255,8 @@ pub(crate) async fn priority_wizard_loop<'a>(
             Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
         };
 
-        // If user selected any items, ask for duration and save priorities
         if !higher_priority_than.is_empty() {
+            // User selected items this is higher priority than.
             println!("How long should this priority comparison be in effect?");
             let now = Utc::now();
             let in_effect_until = prompt_for_triggers(&now, send_to_data_storage_layer).await;
@@ -277,68 +277,111 @@ pub(crate) async fn priority_wizard_loop<'a>(
                 selected_items.insert(lower_priority_item.get_surreal_record_id().clone());
             }
         } else {
-            // User didn't select any items - ask what they want to do
-            let no_selection_choice = Select::new(
-                "You didn't select any items. What would you like to do?",
-                vec![
-                    NoSelectionChoice::SkipToNext,
-                    NoSelectionChoice::SelectAnItem,
-                ],
+            // User selected nothing for higher priority. Offer a "lower priority than" menu.
+            let selected_lower_from = MultiSelect::new(
+                "Which items is this LOWER priority than? (Space: select item, Left Arrow: deselect all, Right Arrow: select all, Enter: done. Select none to skip.)",
+                comparison_choices.clone(),
             )
             .with_page_size(default_select_page_size())
             .prompt();
 
-            match no_selection_choice {
-                Ok(NoSelectionChoice::SelectAnItem) => {
-                    // Show all unselected items including the current one for selection
-                    let all_items_for_selection: Vec<_> = unselected_items
-                        .iter()
-                        .map(|item| {
-                            DisplayWhyInScopeAndActionWithItemStatus::new(
-                                item,
-                                Filter::Active,
-                                DisplayFormat::SingleLine,
-                            )
-                        })
-                        .collect();
-
-                    let item_selection = Select::new(
-                        "Which item would you like to work on?",
-                        all_items_for_selection,
-                    )
-                    .with_page_size(default_select_page_size())
-                    .prompt();
-
-                    match item_selection {
-                        Ok(selected_display) => {
-                            // Route to the appropriate menu based on action type
-                            super::handle_item_selection(
-                                selected_display.into(),
-                                do_now_list,
-                                send_to_data_storage_layer,
-                            )
-                            .await?;
-
-                            // After returning from the menu, return Ok to refresh the main loop
-                            return Ok(());
-                        }
-                        Err(InquireError::OperationCanceled) => {
-                            // User canceled - continue to next comparison
-                        }
-                        Err(InquireError::OperationInterrupted) => return Err(()),
-                        Err(err) => {
-                            panic!("Unexpected error, try restarting the terminal: {}", err)
-                        }
-                    }
-                }
-                Ok(NoSelectionChoice::SkipToNext) => {
-                    // Continue to next comparison - do nothing
-                }
+            let lower_priority_than = match selected_lower_from {
+                Ok(selected) => selected,
                 Err(InquireError::OperationCanceled) => {
                     return Ok(());
                 }
                 Err(InquireError::OperationInterrupted) => return Err(()),
                 Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+            };
+
+            if !lower_priority_than.is_empty() {
+                println!("How long should this priority comparison be in effect?");
+                let now = Utc::now();
+                let in_effect_until = prompt_for_triggers(&now, send_to_data_storage_layer).await;
+
+                // This item is LOWER priority than each item the user selected above.
+                // Record that this item has the lowest priority compared to those selected items.
+                let lower_priority_choices: Vec<_> = lower_priority_than
+                    .iter()
+                    .map(|item| item.clone_to_surreal_action())
+                    .collect();
+
+                send_to_data_storage_layer
+                    .send(DataLayerCommands::DeclareInTheMomentPriority {
+                        choice: selected_at_random.clone_to_surreal_action(),
+                        kind: SurrealPriorityKind::LowestPriority,
+                        not_chosen: lower_priority_choices,
+                        in_effect_until: in_effect_until.clone(),
+                    })
+                    .await
+                    .unwrap();
+
+                // Only eliminate the currently selected item (not the items picked above).
+                selected_items.insert(selected_at_random.get_surreal_record_id().clone());
+            } else {
+                // User didn't select any higher-or-lower comparisons - ask what they want to do
+                let no_selection_choice = Select::new(
+                    "You didn't select any comparisons (neither higher nor lower). What would you like to do?",
+                    vec![
+                        NoSelectionChoice::SkipToNext,
+                        NoSelectionChoice::SelectAnItem,
+                    ],
+                )
+                .with_page_size(default_select_page_size())
+                .prompt();
+
+                match no_selection_choice {
+                    Ok(NoSelectionChoice::SelectAnItem) => {
+                        // Show all unselected items including the current one for selection
+                        let all_items_for_selection: Vec<_> = unselected_items
+                            .iter()
+                            .map(|item| {
+                                DisplayWhyInScopeAndActionWithItemStatus::new(
+                                    item,
+                                    Filter::Active,
+                                    DisplayFormat::SingleLine,
+                                )
+                            })
+                            .collect();
+
+                        let item_selection = Select::new(
+                            "Which item would you like to work on?",
+                            all_items_for_selection,
+                        )
+                        .with_page_size(default_select_page_size())
+                        .prompt();
+
+                        match item_selection {
+                            Ok(selected_display) => {
+                                // Route to the appropriate menu based on action type
+                                super::handle_item_selection(
+                                    selected_display.into(),
+                                    do_now_list,
+                                    send_to_data_storage_layer,
+                                )
+                                .await?;
+
+                                // After returning from the menu, return Ok to refresh the main loop
+                                return Ok(());
+                            }
+                            Err(InquireError::OperationCanceled) => {
+                                // User canceled - continue to next comparison
+                            }
+                            Err(InquireError::OperationInterrupted) => return Err(()),
+                            Err(err) => {
+                                panic!("Unexpected error, try restarting the terminal: {}", err)
+                            }
+                        }
+                    }
+                    Ok(NoSelectionChoice::SkipToNext) => {
+                        // Continue to next comparison - do nothing
+                    }
+                    Err(InquireError::OperationCanceled) => {
+                        return Ok(());
+                    }
+                    Err(InquireError::OperationInterrupted) => return Err(()),
+                    Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+                }
             }
         }
 
