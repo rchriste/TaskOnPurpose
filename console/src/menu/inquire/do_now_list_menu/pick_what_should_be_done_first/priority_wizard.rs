@@ -299,8 +299,8 @@ pub(crate) async fn priority_wizard_loop<'a>(
                 let now = Utc::now();
                 let in_effect_until = prompt_for_triggers(&now, send_to_data_storage_layer).await;
 
-                // This item is LOWER priority than each selected item.
-                // Record it as: (selected item) is highest priority, and (this item) is not chosen.
+                // This item is LOWER priority than each item the user selected above.
+                // Record that this item has the lowest priority compared to those selected items.
                 let lower_priority_choices: Vec<_> = lower_priority_than
                     .iter()
                     .map(|item| item.clone_to_surreal_action())
