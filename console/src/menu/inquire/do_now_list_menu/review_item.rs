@@ -353,7 +353,7 @@ pub(crate) async fn present_review_item_menu(
                 if selected_item.get_item() == item_under_review.get_item() {
                     return Ok(());
                 } else {
-                    println!("Item finished, going back to the item under review");
+                    println!("Item finished, going back to the previously selected item:");
                     let display_item = DisplayItemStatus::new(
                         item_under_review,
                         Filter::Active,
