@@ -26,20 +26,6 @@ use crate::{
 
 use super::WhyInScopeAndActionWithItemStatus;
 
-enum PriorityWizardMode {
-    PriorityWizard,
-    Legacy,
-}
-
-impl Display for PriorityWizardMode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            PriorityWizardMode::PriorityWizard => write!(f, "Priority Wizard"),
-            PriorityWizardMode::Legacy => write!(f, "Legacy Mode (Current Behavior)"),
-        }
-    }
-}
-
 enum FinalPriorityWizardChoice {
     PickRandom,
     RepeatProcess,
@@ -71,6 +57,7 @@ impl Display for NoSelectionChoice {
 enum ItemActionChoice {
     DoItNow,
     PrioritizeIt,
+    LegacyMode,
     NextItem,
 }
 
@@ -79,45 +66,15 @@ impl Display for ItemActionChoice {
         match self {
             ItemActionChoice::DoItNow => write!(f, "Do this item now (quick task)"),
             ItemActionChoice::PrioritizeIt => write!(f, "Prioritize this item"),
+            ItemActionChoice::LegacyMode => {
+                write!(f, "Directly pick what to work on now from a list")
+            }
             ItemActionChoice::NextItem => write!(f, "Skip to next item"),
         }
     }
 }
 
-pub(crate) async fn present_priority_wizard_or_legacy<'a>(
-    choices: &'a [WhyInScopeAndActionWithItemStatus<'a>],
-    do_now_list: &DoNowList,
-    send_to_data_storage_layer: &Sender<DataLayerCommands>,
-) -> Result<(), ()> {
-    let mode_selection = Select::new(
-        "How would you like to select an item?",
-        vec![
-            PriorityWizardMode::PriorityWizard,
-            PriorityWizardMode::Legacy,
-        ],
-    )
-    .with_page_size(default_select_page_size())
-    .prompt();
-
-    match mode_selection {
-        Ok(PriorityWizardMode::PriorityWizard) => {
-            priority_wizard_loop(choices, do_now_list, send_to_data_storage_layer).await
-        }
-        Ok(PriorityWizardMode::Legacy) => {
-            super::present_pick_what_should_be_done_first_menu(
-                choices,
-                do_now_list,
-                send_to_data_storage_layer,
-            )
-            .await
-        }
-        Err(InquireError::OperationCanceled) => Ok(()),
-        Err(InquireError::OperationInterrupted) => Err(()),
-        Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
-    }
-}
-
-async fn priority_wizard_loop<'a>(
+pub(crate) async fn priority_wizard_loop<'a>(
     choices: &'a [WhyInScopeAndActionWithItemStatus<'a>],
     do_now_list: &DoNowList,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
@@ -223,6 +180,7 @@ async fn priority_wizard_loop<'a>(
             vec![
                 ItemActionChoice::PrioritizeIt,
                 ItemActionChoice::DoItNow,
+                ItemActionChoice::LegacyMode,
                 ItemActionChoice::NextItem,
             ],
         )
@@ -241,6 +199,15 @@ async fn priority_wizard_loop<'a>(
 
                 // After returning from the menu, return Ok to refresh the main loop
                 return Ok(());
+            }
+            Ok(ItemActionChoice::LegacyMode) => {
+                // Switch to legacy behavior (current selection + priority UI)
+                return super::present_pick_what_should_be_done_first_menu(
+                    choices,
+                    do_now_list,
+                    send_to_data_storage_layer,
+                )
+                .await;
             }
             Ok(ItemActionChoice::NextItem) => {
                 // Skip to next item - continue the loop
