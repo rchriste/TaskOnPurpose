@@ -1,6 +1,5 @@
 use std::fmt::{self, Display, Formatter};
 
-use ahash::HashMap;
 use chrono::Utc;
 use inquire::Select;
 use itertools::Itertools;
@@ -37,12 +36,24 @@ use crate::{
 
 enum ReviewItemMenuChoices<'e> {
     DoneWithReview,
-    UpdateRelativeImportanceDontShowSingleParent { parent: &'e Item<'e> },
-    UpdateRelativeImportanceShowParent { parent: &'e Item<'e> },
-    UpdateDependencies { current_item: &'e ItemStatus<'e> },
-    UpdateUrgencyPlan { current_item: &'e ItemStatus<'e> },
-    UpdateReviewFrequency { current_item: &'e ItemStatus<'e> },
-    FinishThisItem,
+    UpdateRelativeImportanceDontShowSingleParent {
+        parent: &'e Item<'e>,
+    },
+    UpdateRelativeImportanceShowParent {
+        parent: &'e Item<'e>,
+    },
+    UpdateDependencies {
+        current_item: &'e ItemStatus<'e>,
+    },
+    UpdateUrgencyPlan {
+        current_item: &'e ItemStatus<'e>,
+    },
+    UpdateReviewFrequency {
+        current_item: &'e ItemStatus<'e>,
+    },
+    FinishThisItem {
+        previously_selected_item_id: RecordId,
+    },
     AddNewParent,
     AddNewChild,
     GoToParent(&'e Item<'e>),
@@ -111,7 +122,7 @@ impl Display for ReviewItemMenuChoices<'_> {
                     write!(f, "Update review frequency, current setting: not set")
                 }
             }
-            ReviewItemMenuChoices::FinishThisItem => write!(f, "Finish this item"),
+            ReviewItemMenuChoices::FinishThisItem { .. } => write!(f, "Finish this item"),
             ReviewItemMenuChoices::AddNewParent => write!(f, "Add new parent"),
             ReviewItemMenuChoices::AddNewChild => write!(f, "Add new child"),
             ReviewItemMenuChoices::GoToParent(item) => {
@@ -137,6 +148,7 @@ impl Display for ReviewItemMenuChoices<'_> {
 impl ReviewItemMenuChoices<'_> {
     pub(crate) fn make_list<'e>(
         current_item: &'e ItemStatus<'e>,
+        previously_selected_item: &'e ItemStatus<'e>,
     ) -> Vec<ReviewItemMenuChoices<'e>> {
         let mut list = vec![ReviewItemMenuChoices::DoneWithReview];
 
@@ -167,7 +179,9 @@ impl ReviewItemMenuChoices<'_> {
         list.push(ReviewItemMenuChoices::UpdateUrgencyPlan { current_item });
         list.push(ReviewItemMenuChoices::UpdateReviewFrequency { current_item });
         list.push(ReviewItemMenuChoices::UpdateDependencies { current_item });
-        list.push(ReviewItemMenuChoices::FinishThisItem);
+        list.push(ReviewItemMenuChoices::FinishThisItem {
+            previously_selected_item_id: previously_selected_item.get_surreal_record_id().clone(),
+        });
         list.push(ReviewItemMenuChoices::AddNewParent);
 
         for parent in current_item.get_item_node().get_parents(Filter::Active) {
@@ -194,287 +208,210 @@ impl ReviewItemMenuChoices<'_> {
 
 pub(crate) async fn present_review_item_menu(
     item_status: &ItemStatus<'_>,
-    all_items: &HashMap<&RecordId, ItemStatus<'_>>,
-    base_data: &BaseData,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
-    present_review_item_menu_internal(
-        item_status,
-        item_status,
-        all_items,
-        base_data,
-        send_to_data_storage_layer,
-    )
-    .await?;
+    let item_under_review_id = item_status.get_surreal_record_id().clone();
+    let mut selected_item_id = item_under_review_id.clone();
+    let mut will_be_previously_selected_item_id = item_status.get_surreal_record_id().clone();
 
-    Ok(())
-}
-
-async fn refresh_items_present_review_item_menu_internal(
-    item_under_review: &ItemStatus<'_>,
-    selected_item: &ItemStatus<'_>,
-    send_to_data_storage_layer: &Sender<DataLayerCommands>,
-) -> Result<(), ()> {
-    let surreal_tables = SurrealTables::new(send_to_data_storage_layer)
-        .await
-        .unwrap();
-    let now = Utc::now();
-    let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
-    let updated_calculated_data = CalculatedData::new_from_base_data(base_data);
-
-    let updated_all_items = updated_calculated_data.get_items_status();
-    let updated_item_under_review = updated_all_items
-        .get(item_under_review.get_item().get_surreal_record_id())
-        .expect("Item under review must be in the list of all items");
-    let updated_selected_item = updated_all_items
-        .get(selected_item.get_item().get_surreal_record_id())
-        .expect("Selected item must be in the list of all items");
-
-    Box::pin(present_review_item_menu_internal(
-        updated_item_under_review,
-        updated_selected_item,
-        updated_all_items,
-        updated_calculated_data.get_base_data(),
-        send_to_data_storage_layer,
-    ))
-    .await
-}
-
-async fn present_review_item_menu_internal<'a>(
-    item_under_review: &ItemStatus<'a>,
-    selected_item: &ItemStatus<'a>,
-    all_items: &'a HashMap<&'a RecordId, ItemStatus<'a>>,
-    base_data: &BaseData,
-    send_to_data_storage_layer: &Sender<DataLayerCommands>,
-) -> Result<(), ()> {
-    let choices = ReviewItemMenuChoices::make_list(selected_item);
-    let selected = Select::new("What would you like to do with this item?", choices)
-        .with_page_size(default_select_page_size())
-        .prompt()
-        .unwrap();
-
-    match selected {
-        ReviewItemMenuChoices::DoneWithReview => {
-            let now = Utc::now();
-            send_to_data_storage_layer
-                .send(DataLayerCommands::UpdateItemLastReviewedDate(
-                    item_under_review.get_surreal_record_id().clone(),
-                    now.into(),
-                ))
-                .await
-                .unwrap();
-
-            Ok(())
-        }
-        ReviewItemMenuChoices::UpdateRelativeImportanceDontShowSingleParent { parent }
-        | ReviewItemMenuChoices::UpdateRelativeImportanceShowParent { parent } => {
-            let parent = all_items
-                .get(parent.get_surreal_record_id())
-                .expect("Parent must be in the list of all items")
-                .get_item_node();
-            update_relative_importance(
-                parent,
-                selected_item.get_item(),
-                send_to_data_storage_layer,
-            )
+    loop {
+        let surreal_tables = SurrealTables::new(send_to_data_storage_layer)
             .await
             .unwrap();
+        let now = Utc::now();
+        let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+        let calculated_data = CalculatedData::new_from_base_data(base_data);
+        let all_items = calculated_data.get_items_status();
+        let base_data = calculated_data.get_base_data();
 
-            refresh_items_present_review_item_menu_internal(
-                item_under_review,
-                selected_item,
-                send_to_data_storage_layer,
-            )
-            .await
-        }
-        ReviewItemMenuChoices::UpdateDependencies { current_item } => {
-            assert_eq!(
-                current_item.get_item(),
-                selected_item.get_item(),
-                "current_item exists twice so it can be used by display trait"
-            );
-            let dependencies =
-                prompt_for_dependencies(Some(selected_item), base_data, send_to_data_storage_layer)
+        let item_under_review = all_items
+            .get(&item_under_review_id)
+            .expect("Item under review must be in the list of all items");
+        let previously_selected_item = all_items
+            .get(&will_be_previously_selected_item_id)
+            .unwrap_or(item_under_review);
+        will_be_previously_selected_item_id = selected_item_id.clone();
+        let selected_item = all_items
+            .get(&selected_item_id)
+            .expect("Selected item must be in the list of all items");
+
+        let choices = ReviewItemMenuChoices::make_list(selected_item, previously_selected_item);
+        let selected = Select::new("What would you like to do with this item?", choices)
+            .with_page_size(default_select_page_size())
+            .prompt()
+            .unwrap();
+
+        match selected {
+            ReviewItemMenuChoices::DoneWithReview => {
+                send_to_data_storage_layer
+                    .send(DataLayerCommands::UpdateItemLastReviewedDate(
+                        item_under_review.get_surreal_record_id().clone(),
+                        Utc::now().into(),
+                    ))
                     .await
                     .unwrap();
-            for command in dependencies.into_iter() {
-                match command {
-                    AddOrRemove::AddExisting(dependency) => {
-                        send_to_data_storage_layer
-                            .send(DataLayerCommands::AddItemDependency(
-                                selected_item.get_surreal_record_id().clone(),
-                                dependency,
-                            ))
-                            .await
-                            .unwrap();
-                    }
-                    AddOrRemove::AddNewEvent(new_event) => {
-                        send_to_data_storage_layer
-                            .send(DataLayerCommands::AddItemDependencyNewEvent(
-                                selected_item.get_surreal_record_id().clone(),
-                                new_event,
-                            ))
-                            .await
-                            .unwrap();
-                    }
-                    AddOrRemove::RemoveExisting(dependency) => {
-                        send_to_data_storage_layer
-                            .send(DataLayerCommands::RemoveItemDependency(
-                                selected_item.get_surreal_record_id().clone(),
-                                dependency,
-                            ))
-                            .await
-                            .unwrap();
-                    }
-                }
+
+                return Ok(());
             }
-
-            refresh_items_present_review_item_menu_internal(
-                item_under_review,
-                selected_item,
-                send_to_data_storage_layer,
-            )
-            .await
-        }
-        ReviewItemMenuChoices::UpdateReviewFrequency { .. } => {
-            present_pick_item_review_frequency_menu(selected_item, send_to_data_storage_layer)
-                .await
-                .unwrap();
-
-            refresh_items_present_review_item_menu_internal(
-                item_under_review,
-                selected_item,
-                send_to_data_storage_layer,
-            )
-            .await
-        }
-        ReviewItemMenuChoices::UpdateUrgencyPlan { current_item } => {
-            let now = Utc::now();
-            let urgency_plan = prompt_for_urgency_plan(&now, send_to_data_storage_layer).await;
-            send_to_data_storage_layer
-                .send(DataLayerCommands::UpdateUrgencyPlan(
-                    current_item.get_surreal_record_id().clone(),
-                    Some(urgency_plan),
-                ))
-                .await
-                .unwrap();
-
-            refresh_items_present_review_item_menu_internal(
-                item_under_review,
-                selected_item,
-                send_to_data_storage_layer,
-            )
-            .await
-        }
-        ReviewItemMenuChoices::FinishThisItem => {
-            let when_finished: Datetime = (Utc::now()).into();
-            send_to_data_storage_layer
-                .send(DataLayerCommands::FinishItem {
-                    item: selected_item.get_surreal_record_id().clone(),
-                    when_finished,
-                })
-                .await
-                .unwrap();
-
-            if selected_item.get_item() == item_under_review.get_item() {
-                Ok(())
-            } else {
-                println!("Item finished, going back to the item under review");
-                let display_item = DisplayItemStatus::new(
-                    item_under_review,
-                    Filter::Active,
-                    DisplayFormat::SingleLine,
-                );
-                println!("{}", display_item);
-                refresh_items_present_review_item_menu_internal(
-                    item_under_review,
-                    item_under_review,
+            ReviewItemMenuChoices::UpdateRelativeImportanceDontShowSingleParent { parent }
+            | ReviewItemMenuChoices::UpdateRelativeImportanceShowParent { parent } => {
+                let parent = all_items
+                    .get(parent.get_surreal_record_id())
+                    .expect("Parent must be in the list of all items")
+                    .get_item_node();
+                update_relative_importance(
+                    parent,
+                    selected_item.get_item(),
                     send_to_data_storage_layer,
                 )
                 .await
+                .unwrap();
+                //Go back to the parent item after updating relative importance
+                selected_item_id = parent.get_surreal_record_id().clone();
+
+                continue;
             }
-        }
-        ReviewItemMenuChoices::AddNewParent => {
-            give_this_item_a_parent(selected_item.get_item(), false, send_to_data_storage_layer)
+            ReviewItemMenuChoices::UpdateDependencies { current_item } => {
+                assert_eq!(
+                    current_item.get_item(),
+                    selected_item.get_item(),
+                    "current_item exists twice so it can be used by display trait"
+                );
+                let dependencies = prompt_for_dependencies(
+                    Some(selected_item),
+                    base_data,
+                    send_to_data_storage_layer,
+                )
+                .await
+                .unwrap();
+                for command in dependencies.into_iter() {
+                    match command {
+                        AddOrRemove::AddExisting(dependency) => {
+                            send_to_data_storage_layer
+                                .send(DataLayerCommands::AddItemDependency(
+                                    selected_item.get_surreal_record_id().clone(),
+                                    dependency,
+                                ))
+                                .await
+                                .unwrap();
+                        }
+                        AddOrRemove::AddNewEvent(new_event) => {
+                            send_to_data_storage_layer
+                                .send(DataLayerCommands::AddItemDependencyNewEvent(
+                                    selected_item.get_surreal_record_id().clone(),
+                                    new_event,
+                                ))
+                                .await
+                                .unwrap();
+                        }
+                        AddOrRemove::RemoveExisting(dependency) => {
+                            send_to_data_storage_layer
+                                .send(DataLayerCommands::RemoveItemDependency(
+                                    selected_item.get_surreal_record_id().clone(),
+                                    dependency,
+                                ))
+                                .await
+                                .unwrap();
+                        }
+                    }
+                }
+
+                continue;
+            }
+            ReviewItemMenuChoices::UpdateReviewFrequency { .. } => {
+                present_pick_item_review_frequency_menu(selected_item, send_to_data_storage_layer)
+                    .await
+                    .unwrap();
+
+                continue;
+            }
+            ReviewItemMenuChoices::UpdateUrgencyPlan { current_item } => {
+                let now = Utc::now();
+                let urgency_plan = prompt_for_urgency_plan(&now, send_to_data_storage_layer).await;
+                send_to_data_storage_layer
+                    .send(DataLayerCommands::UpdateUrgencyPlan(
+                        current_item.get_surreal_record_id().clone(),
+                        Some(urgency_plan),
+                    ))
+                    .await
+                    .unwrap();
+
+                continue;
+            }
+            ReviewItemMenuChoices::FinishThisItem {
+                previously_selected_item_id,
+            } => {
+                let when_finished: Datetime = (Utc::now()).into();
+                send_to_data_storage_layer
+                    .send(DataLayerCommands::FinishItem {
+                        item: selected_item.get_surreal_record_id().clone(),
+                        when_finished,
+                    })
+                    .await
+                    .unwrap();
+
+                if selected_item.get_item() == item_under_review.get_item() {
+                    return Ok(());
+                } else {
+                    println!("Item finished, going back to the previously selected item:");
+                    let display_item = DisplayItemStatus::new(
+                        item_under_review,
+                        Filter::Active,
+                        DisplayFormat::SingleLine,
+                    );
+                    println!("{}", display_item);
+                    selected_item_id = previously_selected_item_id;
+                    continue;
+                }
+            }
+            ReviewItemMenuChoices::AddNewParent => {
+                give_this_item_a_parent(
+                    selected_item.get_item(),
+                    false,
+                    send_to_data_storage_layer,
+                )
                 .await
                 .unwrap();
 
-            refresh_items_present_review_item_menu_internal(
-                item_under_review,
-                selected_item,
-                send_to_data_storage_layer,
-            )
-            .await
-        }
-        ReviewItemMenuChoices::AddNewChild => {
-            state_a_smaller_action(selected_item.get_item_node(), send_to_data_storage_layer)
-                .await
-                .unwrap();
+                continue;
+            }
+            ReviewItemMenuChoices::AddNewChild => {
+                state_a_smaller_action(selected_item.get_item_node(), send_to_data_storage_layer)
+                    .await
+                    .unwrap();
 
-            refresh_items_present_review_item_menu_internal(
-                item_under_review,
-                selected_item,
-                send_to_data_storage_layer,
-            )
-            .await
-        }
-        ReviewItemMenuChoices::GoToParent(item) => {
-            let parent = all_items
-                .get(item.get_surreal_record_id())
-                .expect("Parent must be in the list of all items");
-            Box::pin(present_review_item_menu_internal(
-                item_under_review,
-                parent,
-                all_items,
-                base_data,
-                send_to_data_storage_layer,
-            ))
-            .await
-        }
-        ReviewItemMenuChoices::RemoveParent(item) => {
-            send_to_data_storage_layer
-                .send(DataLayerCommands::ParentItemRemoveParent {
-                    child: selected_item.get_surreal_record_id().clone(),
-                    parent_to_remove: item.get_surreal_record_id().clone(),
-                })
-                .await
-                .unwrap();
+                continue;
+            }
+            ReviewItemMenuChoices::GoToParent(item) => {
+                selected_item_id = item.get_surreal_record_id().clone();
+                continue;
+            }
+            ReviewItemMenuChoices::RemoveParent(item) => {
+                send_to_data_storage_layer
+                    .send(DataLayerCommands::ParentItemRemoveParent {
+                        child: selected_item.get_surreal_record_id().clone(),
+                        parent_to_remove: item.get_surreal_record_id().clone(),
+                    })
+                    .await
+                    .unwrap();
 
-            refresh_items_present_review_item_menu_internal(
-                item_under_review,
-                selected_item,
-                send_to_data_storage_layer,
-            )
-            .await
-        }
-        ReviewItemMenuChoices::GoToChild(item) => {
-            let child = all_items
-                .get(item.get_surreal_record_id())
-                .expect("Child must be in the list of all items");
-            Box::pin(present_review_item_menu_internal(
-                item_under_review,
-                child,
-                all_items,
-                base_data,
-                send_to_data_storage_layer,
-            ))
-            .await
-        }
-        ReviewItemMenuChoices::RemoveChild(item) => {
-            send_to_data_storage_layer
-                .send(DataLayerCommands::ParentItemRemoveParent {
-                    child: item.get_surreal_record_id().clone(),
-                    parent_to_remove: selected_item.get_surreal_record_id().clone(),
-                })
-                .await
-                .unwrap();
+                continue;
+            }
+            ReviewItemMenuChoices::GoToChild(item) => {
+                selected_item_id = item.get_surreal_record_id().clone();
+                continue;
+            }
+            ReviewItemMenuChoices::RemoveChild(item) => {
+                send_to_data_storage_layer
+                    .send(DataLayerCommands::ParentItemRemoveParent {
+                        child: item.get_surreal_record_id().clone(),
+                        parent_to_remove: selected_item.get_surreal_record_id().clone(),
+                    })
+                    .await
+                    .unwrap();
 
-            refresh_items_present_review_item_menu_internal(
-                item_under_review,
-                selected_item,
-                send_to_data_storage_layer,
-            )
-            .await
+                continue;
+            }
         }
     }
 }
