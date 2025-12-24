@@ -229,7 +229,7 @@ pub(crate) async fn present_review_item_menu(
             .expect("Item under review must be in the list of all items");
         let previously_selected_item = all_items
             .get(&will_be_previously_selected_item_id)
-            .unwrap_or(item_status);
+            .unwrap_or(item_under_review);
         will_be_previously_selected_item_id = selected_item_id.clone();
         let selected_item = all_items
             .get(&selected_item_id)
