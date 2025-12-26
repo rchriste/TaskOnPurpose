@@ -240,7 +240,7 @@ pub(crate) async fn priority_wizard_loop<'a>(
 
         // Ask which items this is higher priority than
         let selected_from = MultiSelect::new(
-            "Which items is this HIGHER priority than? (Space: select item, Left Arrow: deselect all, Right Arrow: select all, Enter: done. If you select none, you'll be asked which items it is LOWER priority than.)",
+            "Which items is this HIGHER priority than? (Space: select item, Left Arrow: deselect all, Right Arrow: select all, Enter: done. If you select none, you'll be asked which items it is lower priority than.)",
             comparison_choices.clone(),
         )
         .with_page_size(default_select_page_size())
