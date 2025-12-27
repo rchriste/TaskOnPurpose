@@ -27,8 +27,8 @@ impl<'s> Event<'s> {
         }
     }
 
-    pub(crate) fn is_active(&self) -> bool {
-        !self.surreal_event.triggered
+    pub(crate) fn is_triggered(&self) -> bool {
+        self.surreal_event.triggered
     }
 
     pub(crate) fn get_surreal_record_id(&self) -> &RecordId {

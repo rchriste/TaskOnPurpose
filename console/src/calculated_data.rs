@@ -2,10 +2,11 @@ pub(crate) mod parent_lookup;
 
 use crate::{
     base_data::{
-        BaseData, event::Event, in_the_moment_priority::InTheMomentPriorityWithItemAction,
-        time_spent::TimeSpent,
+        BaseData, in_the_moment_priority::InTheMomentPriorityWithItemAction, time_spent::TimeSpent,
     },
-    node::{item_node::ItemNode, item_status::ItemStatus, mode_node::ModeNode},
+    node::{
+        event_node::EventNode, item_node::ItemNode, item_status::ItemStatus, mode_node::ModeNode,
+    },
     systems::do_now_list::current_mode::CurrentMode,
 };
 use ahash::HashMap;
@@ -15,6 +16,7 @@ use surrealdb::RecordId;
 
 use parent_lookup::ParentLookup;
 
+#[allow(clippy::too_many_arguments)]
 #[self_referencing]
 pub(crate) struct CalculatedData {
     base_data: BaseData,
@@ -34,6 +36,10 @@ pub(crate) struct CalculatedData {
     #[borrows(items_status, base_data, items_nodes)]
     #[covariant]
     in_the_moment_priorities: Vec<InTheMomentPriorityWithItemAction<'this>>,
+
+    #[borrows(base_data, items_status)]
+    #[covariant]
+    event_nodes: HashMap<&'this RecordId, EventNode<'this>>,
 
     #[borrows(base_data)]
     current_mode: CurrentMode,
@@ -92,6 +98,13 @@ impl CalculatedData {
                 });
                 in_the_moment_priorities
             },
+            event_nodes_builder: |base_data, items_status| {
+                base_data
+                    .get_events()
+                    .iter()
+                    .map(|(event_id, event)| (*event_id, EventNode::new(event, items_status)))
+                    .collect::<HashMap<_, _>>()
+            },
             current_mode_builder: |base_data| {
                 let surreal_current_modes = base_data.get_surreal_current_modes();
                 assert!(surreal_current_modes.len() <= 1, "There should not be more than one current mode. In the future it would be great for this to be a silent error that just deletes the current mode and logs an error into an error log (that currently doesn't exist) clears it but for now this is an assert. Length is: {}", surreal_current_modes.len());
@@ -134,8 +147,8 @@ impl CalculatedData {
         self.borrow_mode_nodes()
     }
 
-    pub(crate) fn get_events(&self) -> &HashMap<&RecordId, Event<'_>> {
-        self.borrow_base_data().get_events()
+    pub(crate) fn get_event_nodes(&self) -> &HashMap<&RecordId, EventNode<'_>> {
+        self.borrow_event_nodes()
     }
 
     pub(crate) fn get_base_data(&self) -> &BaseData {

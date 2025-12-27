@@ -55,7 +55,7 @@ impl IsActive for DependencyWithItemNode<'_> {
             DependencyWithItemNode::AfterItem(item) => item.is_active(),
             DependencyWithItemNode::AfterChildItem(item) => item.is_active(),
             DependencyWithItemNode::DuringItem(item) => item.is_active(),
-            DependencyWithItemNode::AfterEvent(event) => event.is_active(),
+            DependencyWithItemNode::AfterEvent(event) => !event.is_triggered(),
             DependencyWithItemNode::WaitingToBeInterrupted => true,
         }
     }

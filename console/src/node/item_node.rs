@@ -53,7 +53,7 @@ impl IsActive for DependencyWithItem<'_> {
             DependencyWithItem::AfterItem(item) => item.is_active(),
             DependencyWithItem::AfterChildItem(item) => item.is_active(),
             DependencyWithItem::DuringItem(item) => item.is_active(),
-            DependencyWithItem::AfterEvent(event) => event.is_active(),
+            DependencyWithItem::AfterEvent(event) => !event.is_triggered(),
             DependencyWithItem::WaitingToBeInterrupted => true,
         }
     }

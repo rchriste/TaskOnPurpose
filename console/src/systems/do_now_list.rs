@@ -7,12 +7,13 @@ use surrealdb::RecordId;
 pub(crate) mod current_mode;
 
 use crate::{
-    base_data::{BaseData, event::Event, time_spent::TimeSpent},
+    base_data::{BaseData, time_spent::TimeSpent},
     calculated_data::CalculatedData,
     data_storage::surrealdb_layer::surreal_item::SurrealUrgency,
     node::{
         Filter,
         action_with_item_status::{ActionWithItemStatus, WhyInScopeActionListsByUrgency},
+        event_node::EventNode,
         item_status::ItemStatus,
         urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
         why_in_scope_and_action_with_item_status::{WhyInScope, WhyInScopeAndActionWithItemStatus},
@@ -169,8 +170,8 @@ impl DoNowList {
         self.borrow_calculated_data().get_current_mode()
     }
 
-    pub(crate) fn get_events(&self) -> &HashMap<&RecordId, Event<'_>> {
-        self.borrow_calculated_data().get_events()
+    pub(crate) fn get_event_nodes(&self) -> &HashMap<&RecordId, EventNode<'_>> {
+        self.borrow_calculated_data().get_event_nodes()
     }
 
     pub(crate) fn get_base_data(&self) -> &BaseData {
