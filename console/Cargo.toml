@@ -1,6 +1,6 @@
 [package]
 name = "taskonpurpose"
-version = "0.1.154"
+version = "0.1.155"
 edition = "2024"
 
 [dependencies]
@@ -16,7 +16,7 @@ lazy_static = "1.4.0" #So I can efficiently parse regular expressions
 regex = "1.10.2" #So I can parse more date formats
 itertools = "0.14.0"
 #So I can create a self referencing struct, another option that I found or an alternative library could be https://lib.rs/crates/escher
-ouroboros = { version = "0.18.5" }
+ouroboros = { git = "https://github.com/someguynamedjosh/ouroboros" }
 derive_builder = "0.20.0"
 better_term = "1.4.61" #Added so I can use bold and other styles, initially just in the help text but with goals to expand
 crossterm = "0.29.0" #Added so I can use RATATUI

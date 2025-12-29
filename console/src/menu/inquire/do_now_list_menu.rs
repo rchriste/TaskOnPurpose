@@ -26,7 +26,7 @@ use surrealdb::RecordId;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    base_data::{BaseData, event::Event},
+    base_data::BaseData,
     calculated_data::CalculatedData,
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands, surreal_item::SurrealDependency,
@@ -41,7 +41,8 @@ use crate::{
     node::{
         Filter,
         action_with_item_status::ActionWithItemStatus,
-        item_status::{DependencyWithItemNode, ItemStatus},
+        event_node::EventNode,
+        item_status::ItemStatus,
         urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
         why_in_scope_and_action_with_item_status::{WhyInScope, WhyInScopeAndActionWithItemStatus},
     },
@@ -61,7 +62,7 @@ pub(crate) enum InquireDoNowListItem<'e> {
     CaptureNewItem,
     Search,
     ChangeMode(&'e CurrentMode),
-    DeclareEvent { waiting_on: Vec<&'e Event<'e>> },
+    DeclareEvent { waiting_on: Vec<&'e EventNode<'e>> },
     DoNowListSingleItem(&'e UrgencyLevelItemWithItemStatus<'e>),
     RefreshList(DateTime<Local>),
     BackMenu,
@@ -140,14 +141,13 @@ fn turn_to_icons(in_scope: &[SelectedSingleMode]) -> String {
 impl<'a> InquireDoNowListItem<'a> {
     pub(crate) fn create_list(
         item_action: &'a [UrgencyLevelItemWithItemStatus<'a>],
-        events: &'a HashMap<&'a RecordId, Event<'a>>,
+        event_nodes: &'a HashMap<&'a RecordId, EventNode<'a>>,
         do_now_list_created: DateTime<Utc>,
         current_mode: &'a CurrentMode,
     ) -> Vec<InquireDoNowListItem<'a>> {
-        let waiting_on = events
-            .iter()
-            .filter(|(_, x)| x.is_active())
-            .map(|(_, x)| x)
+        let waiting_on = event_nodes
+            .values()
+            .filter(|event_node| event_node.is_active())
             .collect::<Vec<_>>();
         let iter = chain!(
             once(InquireDoNowListItem::RefreshList(
@@ -236,14 +236,16 @@ pub(crate) fn present_upcoming(do_now_list: &DoNowList) {
 
 enum EventSelection<'e> {
     ReturnToDoNowList,
-    Event(&'e Event<'e>),
+    Event(&'e EventNode<'e>),
 }
 
 impl Display for EventSelection<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EventSelection::ReturnToDoNowList => write!(f, "🔙 Return to Do Now List"),
-            EventSelection::Event(event) => write!(f, "{}", event.get_summary()),
+            EventSelection::Event(event_node) => {
+                write!(f, "{}", event_node.get_summary())
+            }
         }
     }
 }
@@ -278,11 +280,11 @@ pub(crate) async fn present_do_now_list_menu(
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     let ordered_do_now_list = do_now_list.get_ordered_do_now_list();
-    let events = do_now_list.get_events();
+    let event_nodes = do_now_list.get_event_nodes();
 
     let inquire_do_now_list = InquireDoNowListItem::create_list(
         ordered_do_now_list,
-        events,
+        event_nodes,
         do_now_list_created,
         do_now_list.get_current_mode(),
     );
@@ -325,25 +327,12 @@ pub(crate) async fn present_do_now_list_menu(
                 .with_page_size(default_select_page_size())
                 .prompt();
             match selected {
-                Ok(EventSelection::Event(event)) => {
-                    let items_waiting_on_this_event = do_now_list
-                        .get_all_items_status()
-                        .values()
-                        .filter(|x| {
-                            x.is_active()
-                                && x.get_dependencies(Filter::Active).any(|x| match x {
-                                    DependencyWithItemNode::AfterEvent(event_waiting_on) => {
-                                        event_waiting_on.get_surreal_record_id()
-                                            == event.get_surreal_record_id()
-                                    }
-                                    _ => false,
-                                })
-                        })
-                        .collect::<Vec<_>>();
+                Ok(EventSelection::Event(event_node)) => {
+                    let items_waiting_on_this_event = event_node.get_waiting_on_this();
                     let list = chain!(
                         once(EventTrigger::ReturnToDoNowList),
                         once(EventTrigger::TriggerEvent {
-                            all_items_waiting_on_event: items_waiting_on_this_event.clone()
+                            all_items_waiting_on_event: items_waiting_on_this_event.to_vec()
                         }),
                         items_waiting_on_this_event
                             .iter()
@@ -367,7 +356,7 @@ pub(crate) async fn present_do_now_list_menu(
                                     .send(DataLayerCommands::RemoveItemDependency(
                                         item_waiting_on_event.get_surreal_record_id().clone(),
                                         SurrealDependency::AfterEvent(
-                                            event.get_surreal_record_id().clone(),
+                                            event_node.get_surreal_record_id().clone(),
                                         ),
                                     ))
                                     .await
@@ -375,7 +364,7 @@ pub(crate) async fn present_do_now_list_menu(
                             }
                             send_to_data_storage_layer
                                 .send(DataLayerCommands::TriggerEvent {
-                                    event: event.get_surreal_record_id().clone(),
+                                    event: event_node.get_surreal_record_id().clone(),
                                     when: Utc::now().into(),
                                 })
                                 .await
@@ -560,4 +549,72 @@ pub(crate) fn present_do_now_help_workarounds() -> Result<(), ()> {
     println!("Workarounds Help Coming Soon!");
     println!();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use crate::{
+        base_data::BaseData,
+        calculated_data::CalculatedData,
+        data_storage::surrealdb_layer::{
+            surreal_event::SurrealEvent,
+            surreal_item::{SurrealDependency, SurrealItemBuilder, SurrealItemType},
+            surreal_tables::SurrealTablesBuilder,
+        },
+        menu::inquire::do_now_list_menu::InquireDoNowListItem,
+        node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
+        systems::do_now_list::current_mode::CurrentMode,
+    };
+
+    #[test]
+    fn declare_event_not_shown_when_all_items_waiting_on_event_are_finished() {
+        let now = Utc::now();
+        let event_id: surrealdb::RecordId = ("events", "1").into();
+
+        let surreal_event = SurrealEvent {
+            id: Some(event_id.clone()),
+            version: 0,
+            last_updated: now.into(),
+            triggered: false,
+            summary: "Some event".to_string(),
+        };
+
+        let finished_item_waiting_on_event = SurrealItemBuilder::default()
+            .id(Some(("item", "1").into()))
+            .summary("Finished item waiting on event")
+            .item_type(SurrealItemType::Action)
+            .finished(Some(now.into()))
+            .dependencies(vec![SurrealDependency::AfterEvent(event_id)])
+            .build()
+            .unwrap();
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(vec![finished_item_waiting_on_event])
+            .surreal_events(vec![surreal_event])
+            .build()
+            .expect("no required fields");
+
+        let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+        let calculated_data = CalculatedData::new_from_base_data(base_data);
+        let event_nodes = calculated_data.get_event_nodes();
+        let do_now_list_created = now;
+        let current_mode = CurrentMode::default();
+
+        let empty_actions: [UrgencyLevelItemWithItemStatus; 0] = [];
+        let list = InquireDoNowListItem::create_list(
+            &empty_actions,
+            event_nodes,
+            do_now_list_created,
+            &current_mode,
+        );
+
+        assert!(
+            !list
+                .iter()
+                .any(|x| matches!(x, InquireDoNowListItem::DeclareEvent { .. })),
+            "DeclareEvent should not be shown when no active items wait on any event"
+        );
+    }
 }
