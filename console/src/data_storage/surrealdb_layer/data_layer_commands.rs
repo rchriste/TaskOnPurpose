@@ -1,4 +1,5 @@
 use chrono::Utc;
+use std::{future::Future, pin::Pin};
 use surrealdb::{
     Error as SurrealError, RecordId, Surreal,
     engine::any::{Any, IntoEndpoint, connect},
@@ -8,9 +9,12 @@ use surrealdb::{
     opt::auth,
     sql::Datetime,
 };
-use tokio::sync::{
-    mpsc::{Receiver, Sender},
-    oneshot::{self, error::RecvError},
+use tokio::{
+    join,
+    sync::{
+        mpsc::{Receiver, Sender},
+        oneshot::{self, error::RecvError},
+    },
 };
 
 use crate::{
@@ -20,6 +24,8 @@ use crate::{
     new_mode::NewMode,
     new_time_spent::NewTimeSpent,
 };
+
+use futures::stream::{self, StreamExt};
 
 use super::{
     SurrealTrigger,
@@ -106,6 +112,21 @@ pub(crate) enum DataLayerCommands {
         event: RecordId,
         when: Datetime,
     },
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) enum CopyDestinationBehavior {
+    ErrorIfNotEmpty,
+    ForceDeleteExisting,
+}
+
+type DeleteFuture<'a> = Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'a>>;
+
+fn box_delete_future<'a, Fut>(future: Fut) -> DeleteFuture<'a>
+where
+    Fut: Future<Output = Result<(), String>> + Send + 'a,
+{
+    Box::pin(future)
 }
 
 #[derive(Clone, Debug)]
@@ -505,6 +526,517 @@ fn surreal_tables_has_any_data(tables: &SurrealTables) -> bool {
         || !tables.surreal_events.is_empty()
 }
 
+fn auth_configs_equivalent(a: &Option<SurrealAuthConfig>, b: &Option<SurrealAuthConfig>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(a), Some(b)) => {
+            a.username == b.username && a.password == b.password && a.level == b.level
+        }
+        _ => false,
+    }
+}
+
+async fn connect_with_auto_upgrade(endpoint: &str) -> Result<Surreal<Any>, String> {
+    match connect(endpoint).await {
+        Ok(db) => Ok(db),
+        Err(err) => {
+            if matches!(err, SurrealError::Db(CoreError::OutdatedStorageVersion)) {
+                eprintln!(
+                    "Detected outdated SurrealDB storage version at '{}'. Upgrading storage in place...",
+                    endpoint
+                );
+                upgrade_surreal_storage(endpoint)
+                    .await
+                    .map_err(|upgrade_err| {
+                        format!(
+                            "Failed to upgrade SurrealDB storage automatically: {:?}",
+                            upgrade_err
+                        )
+                    })?;
+                connect(endpoint).await.map_err(|retry_err| {
+                    format!(
+                        "Failed to connect to SurrealDB after upgrade: {:?}",
+                        retry_err
+                    )
+                })
+            } else {
+                Err(format!("Failed to connect to SurrealDB: {:?}", err))
+            }
+        }
+    }
+}
+
+async fn connect_and_prepare(config: &SurrealDbConnectionConfig) -> Result<Surreal<Any>, String> {
+    let db = connect_with_auto_upgrade(config.endpoint.as_str()).await?;
+    if let Some(auth_cfg) = &config.auth {
+        authenticate_surrealdb(&db, config, auth_cfg)
+            .await
+            .map_err(|err| {
+                format!(
+                    "Failed to authenticate to SurrealDB (endpoint='{}'): {:?}",
+                    config.endpoint, err
+                )
+            })?;
+    }
+    Ok(db)
+}
+async fn copy_surreal_items_preserving_ids(
+    db: &Surreal<Any>,
+    surreal_items: Vec<SurrealItem>,
+) -> Result<(), String> {
+    stream::iter(surreal_items.into_iter()) //wrap in a stream so we can use buffer_ordered below
+        .map(|record| async move {
+            let mut updated: Vec<SurrealItem> = db
+                .upsert(SurrealItem::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .map_err(|e| format!("Failed to upsert SurrealItem: {e:?}"))?;
+            if updated.is_empty() {
+                // Same workaround as elsewhere in this file: upsert can silently do nothing.
+                updated = db
+                    .insert(SurrealItem::TABLE_NAME)
+                    .content(record.clone())
+                    .await
+                    .map_err(|e| format!("Failed to insert SurrealItem: {e:?}"))?;
+            }
+            if updated.is_empty() {
+                return Err(format!("Failed to copy SurrealItem {:?}", record.id));
+            }
+
+            Ok(())
+        })
+        .buffer_unordered(100) //limit concurrency
+        .fold(Ok(()), |acc, res| async {
+            match (acc, res) {
+                (Ok(_), Ok(())) => Ok(()),
+                (Err(e), _) | (Ok(()), Err(e)) => Err(e), //Propagate first error encountered
+            }
+        })
+        .await?;
+
+    Ok(())
+}
+
+async fn copy_surreal_time_spent_preserving_ids(
+    db: &Surreal<Any>,
+    surreal_time_spent_log: Vec<SurrealTimeSpent>,
+) -> Result<(), String> {
+    stream::iter(surreal_time_spent_log.into_iter())
+        .map(|record| async move {
+            let mut updated: Vec<SurrealTimeSpent> = db
+                .upsert(SurrealTimeSpent::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .map_err(|e| format!("Failed to upsert SurrealTimeSpent: {e:?}"))?;
+            if updated.is_empty() {
+                updated = db
+                    .insert(SurrealTimeSpent::TABLE_NAME)
+                    .content(record.clone())
+                    .await
+                    .map_err(|e| format!("Failed to insert SurrealTimeSpent: {e:?}"))?;
+            }
+            if updated.is_empty() {
+                return Err(format!("Failed to copy SurrealTimeSpent {:?}", record.id));
+            }
+
+            Ok(())
+        })
+        .buffer_unordered(100)
+        .fold(Ok(()), |acc, res| async {
+            match (acc, res) {
+                (Ok(_), Ok(())) => Ok(()),
+                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
+            }
+        })
+        .await?;
+
+    Ok(())
+}
+
+async fn copy_surreal_in_the_moment_priorities_preserving_ids(
+    db: &Surreal<Any>,
+    surreal_in_the_moment_priorities: Vec<SurrealInTheMomentPriority>,
+) -> Result<(), String> {
+    stream::iter(surreal_in_the_moment_priorities.into_iter())
+        .map(|record| async move {
+            let mut updated: Vec<SurrealInTheMomentPriority> = db
+                .upsert(SurrealInTheMomentPriority::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .map_err(|e| format!("Failed to upsert SurrealInTheMomentPriority: {e:?}"))?;
+            if updated.is_empty() {
+                updated = db
+                    .insert(SurrealInTheMomentPriority::TABLE_NAME)
+                    .content(record.clone())
+                    .await
+                    .map_err(|e| format!("Failed to insert SurrealInTheMomentPriority: {e:?}"))?;
+            }
+            if updated.is_empty() {
+                return Err(format!(
+                    "Failed to copy SurrealInTheMomentPriority {:?}",
+                    record.id
+                ));
+            }
+
+            Ok(())
+        })
+        .buffer_unordered(100)
+        .fold(Ok(()), |acc, res| async {
+            match (acc, res) {
+                (Ok(_), Ok(())) => Ok(()),
+                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
+            }
+        })
+        .await?;
+
+    Ok(())
+}
+
+async fn copy_surreal_current_modes_preserving_ids(
+    db: &Surreal<Any>,
+    surreal_current_modes: Vec<SurrealCurrentMode>,
+) -> Result<(), String> {
+    stream::iter(surreal_current_modes.into_iter())
+        .map(|record| async move {
+            let mut updated: Vec<SurrealCurrentMode> = db
+                .upsert(SurrealCurrentMode::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .map_err(|e| format!("Failed to upsert SurrealCurrentMode: {e:?}"))?;
+            if updated.is_empty() {
+                updated = db
+                    .insert(SurrealCurrentMode::TABLE_NAME)
+                    .content(record.clone())
+                    .await
+                    .map_err(|e| format!("Failed to insert SurrealCurrentMode: {e:?}"))?;
+            }
+            if updated.is_empty() {
+                return Err(format!("Failed to copy SurrealCurrentMode {:?}", record.id));
+            }
+
+            Ok(())
+        })
+        .buffer_unordered(100)
+        .fold(Ok(()), |acc, res| async {
+            match (acc, res) {
+                (Ok(_), Ok(())) => Ok(()),
+                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
+            }
+        })
+        .await?;
+
+    Ok(())
+}
+
+async fn copy_surreal_modes_preserving_ids(
+    db: &Surreal<Any>,
+    surreal_modes: Vec<SurrealMode>,
+) -> Result<(), String> {
+    stream::iter(surreal_modes.into_iter())
+        .map(|record| async move {
+            let mut updated: Vec<SurrealMode> = db
+                .upsert(surreal_mode::SurrealMode::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .map_err(|e| format!("Failed to upsert SurrealMode: {e:?}"))?;
+            if updated.is_empty() {
+                updated = db
+                    .insert(surreal_mode::SurrealMode::TABLE_NAME)
+                    .content(record.clone())
+                    .await
+                    .map_err(|e| format!("Failed to insert SurrealMode: {e:?}"))?;
+            }
+            if updated.is_empty() {
+                return Err(format!("Failed to copy SurrealMode {:?}", record.id));
+            }
+
+            Ok(())
+        })
+        .buffer_unordered(100)
+        .fold(Ok(()), |acc, res| async {
+            match (acc, res) {
+                (Ok(_), Ok(())) => Ok(()),
+                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
+            }
+        })
+        .await?;
+
+    Ok(())
+}
+
+async fn copy_surreal_events_preserving_ids(
+    db: &Surreal<Any>,
+    surreal_events: Vec<SurrealEvent>,
+) -> Result<(), String> {
+    stream::iter(surreal_events.into_iter())
+        .map(|record| async move {
+            let mut updated: Vec<SurrealEvent> = db
+                .upsert(SurrealEvent::TABLE_NAME)
+                .content(record.clone())
+                .await
+                .map_err(|e| format!("Failed to upsert SurrealEvent: {e:?}"))?;
+            if updated.is_empty() {
+                updated = db
+                    .insert(SurrealEvent::TABLE_NAME)
+                    .content(record.clone())
+                    .await
+                    .map_err(|e| format!("Failed to insert SurrealEvent: {e:?}"))?;
+            }
+            if updated.is_empty() {
+                return Err(format!("Failed to copy SurrealEvent {:?}", record.id));
+            }
+
+            Ok(())
+        })
+        .buffer_unordered(100)
+        .fold(Ok(()), |acc, res| async {
+            match (acc, res) {
+                (Ok(_), Ok(())) => Ok(()),
+                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
+            }
+        })
+        .await?;
+
+    Ok(())
+}
+
+async fn copy_surreal_tables_preserving_ids(
+    db: &Surreal<Any>,
+    tables: SurrealTables,
+) -> Result<(), String> {
+    // Copy records preserving record IDs so references remain valid.
+    //Note that if a new table is added to the database then the below code needs to be updated to copy that table as well.
+    let (items, time_spent, priorities, current_mode, modes, events) = join!(
+        biased; // prefer earlier futures to run first as they should have more data
+        copy_surreal_items_preserving_ids(db, tables.surreal_items),
+        copy_surreal_time_spent_preserving_ids(db, tables.surreal_time_spent_log),
+        copy_surreal_in_the_moment_priorities_preserving_ids(
+            db,
+            tables.surreal_in_the_moment_priorities,
+        ),
+        copy_surreal_modes_preserving_ids(db, tables.surreal_modes),
+        copy_surreal_events_preserving_ids(db, tables.surreal_events),
+        copy_surreal_current_modes_preserving_ids(db, tables.surreal_current_modes),
+    );
+
+    //? mark operator can't be done inside the join! macro so do it here
+    items?;
+    time_spent?;
+    priorities?;
+    current_mode?;
+    modes?;
+    events?;
+
+    Ok(())
+}
+
+async fn copy_between_databases_if_destination_empty_same_connection(
+    db: &Surreal<Any>,
+    source_ns: &str,
+    source_db: &str,
+    destination_ns: &str,
+    destination_db: &str,
+    behavior: CopyDestinationBehavior,
+) -> Result<(), String> {
+    db.use_ns(destination_ns)
+        .use_db(destination_db)
+        .await
+        .map_err(|e| format!("Failed to use destination ns/db: {e:?}"))?;
+    let destination_tables = load_from_surrealdb_upgrade_if_needed(db).await;
+    if surreal_tables_has_any_data(&destination_tables) {
+        match behavior {
+            CopyDestinationBehavior::ForceDeleteExisting => {
+                clear_surreal_tables(db, destination_tables).await?;
+            }
+            CopyDestinationBehavior::ErrorIfNotEmpty => {
+                return Err(format!(
+                    "Destination database is not empty (ns='{}' db='{}'). Use --force to delete existing data before copying.",
+                    destination_ns, destination_db
+                ));
+            }
+        }
+    }
+
+    db.use_ns(source_ns)
+        .use_db(source_db)
+        .await
+        .map_err(|e| format!("Failed to use source ns/db: {e:?}"))?;
+    let source_tables = load_from_surrealdb_upgrade_if_needed(db).await;
+
+    db.use_ns(destination_ns)
+        .use_db(destination_db)
+        .await
+        .map_err(|e| format!("Failed to re-select destination ns/db: {e:?}"))?;
+
+    copy_surreal_tables_preserving_ids(db, source_tables).await
+}
+
+async fn clear_surreal_tables(db: &Surreal<Any>, tables: SurrealTables) -> Result<(), String> {
+    stream::iter(tables.surreal_items.into_iter())
+        .map(|record| {
+            box_delete_future(async move {
+                if let Some(id) = record.id {
+                    let deleted: Option<SurrealItem> = db
+                        .delete(&id)
+                        .await
+                        .map_err(|e| format!("Failed to delete SurrealItem {:?}: {e:?}", id))?;
+                    deleted
+                        .ok_or_else(|| format!("SurrealItem {:?} not found for deletion", id))?;
+                }
+                Ok(())
+            })
+        })
+        .chain(
+            stream::iter(tables.surreal_time_spent_log.into_iter()).map(|record| {
+                box_delete_future(async move {
+                    if let Some(id) = record.id {
+                        let deleted: Option<SurrealTimeSpent> =
+                            db.delete(&id).await.map_err(|e| {
+                                format!("Failed to delete SurrealTimeSpent {:?}: {e:?}", id)
+                            })?;
+                        deleted.ok_or_else(|| {
+                            format!("SurrealTimeSpent {:?} not found for deletion", id)
+                        })?;
+                    }
+                    Ok(())
+                })
+            }),
+        )
+        .chain(
+            stream::iter(tables.surreal_in_the_moment_priorities.into_iter()).map(|record| {
+                box_delete_future(async move {
+                    if let Some(id) = record.id {
+                        let deleted: Option<SurrealInTheMomentPriority> =
+                            db.delete(&id).await.map_err(|e| {
+                                format!(
+                                    "Failed to delete SurrealInTheMomentPriority {:?}: {e:?}",
+                                    id
+                                )
+                            })?;
+                        deleted.ok_or_else(|| {
+                            format!("SurrealInTheMomentPriority {:?} not found for deletion", id)
+                        })?;
+                    }
+                    Ok(())
+                })
+            }),
+        )
+        .chain(
+            stream::iter(tables.surreal_current_modes.into_iter()).map(|record| {
+                box_delete_future(async move {
+                    if let Some(id) = record.id {
+                        let deleted: Option<SurrealCurrentMode> =
+                            db.delete(&id).await.map_err(|e| {
+                                format!("Failed to delete SurrealCurrentMode {:?}: {e:?}", id)
+                            })?;
+                        deleted.ok_or_else(|| {
+                            format!("SurrealCurrentMode {:?} not found for deletion", id)
+                        })?;
+                    }
+                    Ok(())
+                })
+            }),
+        )
+        .chain(
+            stream::iter(tables.surreal_modes.into_iter()).map(|record| {
+                box_delete_future(async move {
+                    if let Some(id) = record.id {
+                        let deleted: Option<SurrealMode> = db
+                            .delete(&id)
+                            .await
+                            .map_err(|e| format!("Failed to delete SurrealMode {:?}: {e:?}", id))?;
+                        deleted.ok_or_else(|| {
+                            format!("SurrealMode {:?} not found for deletion", id)
+                        })?;
+                    }
+                    Ok(())
+                })
+            }),
+        )
+        .chain(
+            stream::iter(tables.surreal_events.into_iter()).map(|record| {
+                box_delete_future(async move {
+                    if let Some(id) = record.id {
+                        let deleted: Option<SurrealEvent> = db.delete(&id).await.map_err(|e| {
+                            format!("Failed to delete SurrealEvent {:?}: {e:?}", id)
+                        })?;
+                        deleted.ok_or_else(|| {
+                            format!("SurrealEvent {:?} not found for deletion", id)
+                        })?;
+                    }
+                    Ok(())
+                })
+            }),
+        )
+        .buffer_unordered(100)
+        .fold(Ok(()), |acc, res| async {
+            match (acc, res) {
+                (Ok(_), Ok(())) => Ok(()),
+                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
+            }
+        })
+        .await?;
+
+    Ok(())
+}
+
+pub(crate) async fn copy_database_if_destination_empty(
+    source: SurrealDbConnectionConfig,
+    destination: SurrealDbConnectionConfig,
+    behavior: CopyDestinationBehavior,
+) -> Result<(), String> {
+    if source.endpoint == destination.endpoint {
+        if !auth_configs_equivalent(&source.auth, &destination.auth) {
+            return Err(
+                "Source/destination auth configs differ for the same endpoint; this command currently requires them to match."
+                    .to_string(),
+            );
+        }
+
+        let db = connect_and_prepare(&destination).await?;
+        copy_between_databases_if_destination_empty_same_connection(
+            &db,
+            source.namespace.as_str(),
+            source.database.as_str(),
+            destination.namespace.as_str(),
+            destination.database.as_str(),
+            behavior,
+        )
+        .await
+    } else {
+        let source_db = connect_and_prepare(&source).await?;
+        source_db
+            .use_ns(source.namespace.as_str())
+            .use_db(source.database.as_str())
+            .await
+            .map_err(|e| format!("Failed to select source ns/db: {e:?}"))?;
+        let source_tables = load_from_surrealdb_upgrade_if_needed(&source_db).await;
+
+        let dest_db = connect_and_prepare(&destination).await?;
+        dest_db
+            .use_ns(destination.namespace.as_str())
+            .use_db(destination.database.as_str())
+            .await
+            .map_err(|e| format!("Failed to select destination ns/db: {e:?}"))?;
+        let dest_tables = load_from_surrealdb_upgrade_if_needed(&dest_db).await;
+        if surreal_tables_has_any_data(&dest_tables) {
+            match behavior {
+                CopyDestinationBehavior::ForceDeleteExisting => {
+                    clear_surreal_tables(&dest_db, dest_tables).await?;
+                }
+                CopyDestinationBehavior::ErrorIfNotEmpty => {
+                    return Err(format!(
+                        "Destination database is not empty (endpoint='{}' ns='{}' db='{}'). Use --force to delete existing data before copying.",
+                        destination.endpoint, destination.namespace, destination.database
+                    ));
+                }
+            }
+        }
+
+        copy_surreal_tables_preserving_ids(&dest_db, source_tables).await
+    }
+}
+
 async fn ensure_namespace_and_migrate_if_needed(
     db: &Surreal<Any>,
     config: &SurrealDbConnectionConfig,
@@ -559,122 +1091,9 @@ async fn ensure_namespace_and_migrate_if_needed(
 
     db.use_ns(target_ns).use_db(db_name).await.unwrap();
 
-    // Copy records preserving record IDs so references remain valid.
-    for record in legacy_tables.surreal_items.into_iter() {
-        let mut updated: Vec<SurrealItem> = db
-            .upsert(SurrealItem::TABLE_NAME)
-            .content(record.clone())
-            .await
-            .unwrap();
-        if updated.is_empty() {
-            // Same workaround as elsewhere in this file: upsert can silently do nothing.
-            updated = db
-                .insert(SurrealItem::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .unwrap();
-        }
-        assert!(
-            !updated.is_empty(),
-            "Failed to copy SurrealItem {:?}",
-            record.id
-        );
-    }
-    for record in legacy_tables.surreal_time_spent_log.into_iter() {
-        let mut updated: Vec<SurrealTimeSpent> = db
-            .upsert(SurrealTimeSpent::TABLE_NAME)
-            .content(record.clone())
-            .await
-            .unwrap();
-        if updated.is_empty() {
-            updated = db
-                .insert(SurrealTimeSpent::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .unwrap();
-        }
-        assert!(
-            !updated.is_empty(),
-            "Failed to copy SurrealTimeSpent {:?}",
-            record.id
-        );
-    }
-    for record in legacy_tables.surreal_in_the_moment_priorities.into_iter() {
-        let mut updated: Vec<SurrealInTheMomentPriority> = db
-            .upsert(SurrealInTheMomentPriority::TABLE_NAME)
-            .content(record.clone())
-            .await
-            .unwrap();
-        if updated.is_empty() {
-            updated = db
-                .insert(SurrealInTheMomentPriority::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .unwrap();
-        }
-        assert!(
-            !updated.is_empty(),
-            "Failed to copy SurrealInTheMomentPriority {:?}",
-            record.id
-        );
-    }
-    for record in legacy_tables.surreal_current_modes.into_iter() {
-        let mut updated: Vec<SurrealCurrentMode> = db
-            .upsert(SurrealCurrentMode::TABLE_NAME)
-            .content(record.clone())
-            .await
-            .unwrap();
-        if updated.is_empty() {
-            updated = db
-                .insert(SurrealCurrentMode::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .unwrap();
-        }
-        assert!(
-            !updated.is_empty(),
-            "Failed to copy SurrealCurrentMode {:?}",
-            record.id
-        );
-    }
-    for record in legacy_tables.surreal_modes.into_iter() {
-        let mut updated: Vec<SurrealMode> = db
-            .upsert(surreal_mode::SurrealMode::TABLE_NAME)
-            .content(record.clone())
-            .await
-            .unwrap();
-        if updated.is_empty() {
-            updated = db
-                .insert(surreal_mode::SurrealMode::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .unwrap();
-        }
-        assert!(
-            !updated.is_empty(),
-            "Failed to copy SurrealMode {:?}",
-            record.id
-        );
-    }
-    for record in legacy_tables.surreal_events.into_iter() {
-        let mut updated: Vec<SurrealEvent> = db
-            .upsert(SurrealEvent::TABLE_NAME)
-            .content(record.clone())
-            .await
-            .unwrap();
-        if updated.is_empty() {
-            updated = db
-                .insert(SurrealEvent::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .unwrap();
-        }
-        assert!(
-            !updated.is_empty(),
-            "Failed to copy SurrealEvent {:?}",
-            record.id
-        );
-    }
+    copy_surreal_tables_preserving_ids(db, legacy_tables)
+        .await
+        .unwrap();
 
     println!(
         "SurrealDB namespace copy complete. Continuing with namespace '{}' (db='{}').",
@@ -1997,5 +2416,67 @@ mod tests {
 
         drop(sender);
         data_storage_join_handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn copy_between_databases_when_destination_empty_copies_data() {
+        let db = connect("mem://").await.unwrap();
+
+        // Seed source database.
+        db.use_ns("TaskOnPurpose")
+            .use_db("copy_source")
+            .await
+            .unwrap();
+        create_new_item(NewItem::new("Seed item".into(), Utc::now()), &db).await;
+
+        // Copy into empty destination database.
+        copy_between_databases_if_destination_empty_same_connection(
+            &db,
+            "TaskOnPurpose",
+            "copy_source",
+            "TaskOnPurpose",
+            "copy_dest",
+        )
+        .await
+        .unwrap();
+
+        db.use_ns("TaskOnPurpose")
+            .use_db("copy_dest")
+            .await
+            .unwrap();
+        let tables = load_from_surrealdb_upgrade_if_needed(&db).await;
+        assert!(surreal_tables_has_any_data(&tables));
+        assert_eq!(tables.surreal_items.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn copy_between_databases_when_destination_not_empty_errors() {
+        let db = connect("mem://").await.unwrap();
+
+        // Seed source database.
+        db.use_ns("TaskOnPurpose")
+            .use_db("copy_source2")
+            .await
+            .unwrap();
+        create_new_item(NewItem::new("Seed item".into(), Utc::now()), &db).await;
+
+        // Seed destination database so it is NOT empty.
+        db.use_ns("TaskOnPurpose")
+            .use_db("copy_dest2")
+            .await
+            .unwrap();
+        create_new_item(NewItem::new("Existing dest item".into(), Utc::now()), &db).await;
+
+        let err = copy_between_databases_if_destination_empty_same_connection(
+            &db,
+            "TaskOnPurpose",
+            "copy_source2",
+            "TaskOnPurpose",
+            "copy_dest2",
+        )
+        .await
+        .expect_err("Destination is not empty so copy should refuse");
+
+        assert!(err.contains("Destination database is not empty"));
     }
 }

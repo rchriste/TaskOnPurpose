@@ -4342,6 +4342,7 @@ dependencies = [
  "dateparser",
  "derive_builder",
  "fundu",
+ "futures",
  "icy_sixel",
  "image",
  "inquire",

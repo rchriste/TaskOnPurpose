@@ -15,6 +15,7 @@ pub(crate) mod systems;
 use std::{
     env,
     io::{self, Write},
+    process,
     time::{Duration, SystemTime},
 };
 
@@ -30,7 +31,9 @@ use mimalloc::MiMalloc;
 use tokio::sync::mpsc;
 
 use crate::{
-    data_storage::surrealdb_layer::data_layer_commands::data_storage_start_and_run,
+    data_storage::surrealdb_layer::data_layer_commands::{
+        self, CopyDestinationBehavior, SurrealAuthConfig, data_storage_start_and_run,
+    },
     menu::inquire::do_now_list_menu::present_normal_do_now_list_menu,
 };
 
@@ -42,6 +45,10 @@ struct CliSurrealConfig {
     auth_username: Option<String>,
     auth_password: Option<String>,
     auth_level: Option<String>,
+    initialize_from_endpoint: Option<String>,
+    initialize_from_namespace: Option<String>,
+    initialize_from_database: Option<String>,
+    initialize_from_copy_behavior: CopyDestinationBehavior,
 }
 
 fn print_help_and_exit() -> ! {
@@ -53,16 +60,21 @@ Usage:
     [--surreal-endpoint <endpoint>]
     [--namespace <ns>]
     [--username <user>]
+    [--initialize-from-database <db> [--initialize-from-endpoint <endpoint>] [--initialize-from-namespace <ns>]]
     [--surreal-auth-username <user> --surreal-auth-password <pass> [--surreal-auth-level <root|ns|db>]]
 
 Options:
-  --surreal-endpoint, -e   SurrealDB connection string/endpoint (e.g. mem://, file://..., ws://...)
-  --namespace, -n          SurrealDB namespace (default: TaskOnPurpose)
-  --username, --user, -u   Username to use as the SurrealDB *database name* (default: OS user)
-  --surreal-auth-username  SurrealDB login username (optional; used for remote auth)
-  --surreal-auth-password  SurrealDB login password (optional; used for remote auth)
-  --surreal-auth-level     SurrealDB auth level: root | ns | db (default: root)
-  --help, -h               Show this help
+  --surreal-endpoint, -e        SurrealDB connection string/endpoint (e.g. mem://, file://..., ws://...)
+  --namespace, -n               SurrealDB namespace (default: TaskOnPurpose)
+  --username, --user, -u        Username to use as the SurrealDB *database name* (default: OS user)
+  --initialize-from-database    This option makes it possible to state the initialize from username as the username is how the database name is set. One-shot: copy all data from a source SurrealDB database into the destination database, but only if the destination is empty
+  --initialize-from-endpoint    Source endpoint for --initialize-from-database (default: same as destination endpoint)
+  --initialize-from-namespace   Source namespace for --initialize-from-database (default: same as destination namespace)
+  --force                       When the destination database already contains data, delete it before copying (use with caution!)
+  --surreal-auth-username       SurrealDB login username (optional; used for remote auth)
+  --surreal-auth-password       SurrealDB login password (optional; used for remote auth)
+  --surreal-auth-level          SurrealDB auth level: root | ns | db (default: root)
+  --help, -h                    Show this help
 
 Notes:
   - The SurrealDB database name is derived from the provided username (this replaces the previous hardcoded \"Russ\").
@@ -70,7 +82,7 @@ Notes:
   - If connecting to a remote SurrealDB with IAM enabled, you likely need to pass `--surreal-auth-username/--surreal-auth-password`.
 "#
     );
-    std::process::exit(0);
+    process::exit(0);
 }
 
 fn default_os_username() -> String {
@@ -79,51 +91,62 @@ fn default_os_username() -> String {
         .unwrap_or_else(|_| "default".to_string())
 }
 
-fn parse_cli(args: &[String]) -> CliSurrealConfig {
+fn parse_cli(args: &[String]) -> Result<CliSurrealConfig, String> {
     // Back-compat: `inmemorydb` positional arg still works.
-    let mut endpoint = if args.len() > 1 && args[1] == "inmemorydb" {
-        "mem://".to_string()
-    } else {
-        // TODO: Get a default file location that works for both Linux and Windows
-        "file://c:/.on_purpose.db".to_string()
-    };
+    //Default location can be overridden via CLI args
+    let mut endpoint = "file://c:/.on_purpose.db".to_string();
 
     let mut namespace = "TaskOnPurpose".to_string();
     let mut username = default_os_username();
     let mut auth_username: Option<String> = None;
     let mut auth_password: Option<String> = None;
     let mut auth_level: Option<String> = None;
+    let mut initialize_from_endpoint: Option<String> = None;
+    let mut initialize_from_namespace: Option<String> = None;
+    let mut initialize_from_database: Option<String> = None;
+    let mut initialize_from_copy_behavior = CopyDestinationBehavior::ErrorIfNotEmpty;
 
     let mut i = 1usize;
     while i < args.len() {
+        if args[i] == "inmemorydb" {
+            endpoint = "mem://".to_string();
+            i += 1;
+            continue;
+        }
         match args[i].as_str() {
             "--help" | "-h" => print_help_and_exit(),
+            "-username" | "-user" => {
+                return Err(format!(
+                    "Unrecognized option '{}'. Did you mean '--username <user>' (or '-u <user>')?",
+                    args[i]
+                ));
+            }
             "--surreal-endpoint" | "--endpoint" | "-e" => {
                 i += 1;
                 endpoint = args
                     .get(i)
-                    .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                    .ok_or_else(|| format!("Missing value for {}", args[i - 1]))?
                     .to_string();
             }
             "--namespace" | "--ns" | "-n" => {
                 i += 1;
                 namespace = args
                     .get(i)
-                    .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                    .ok_or_else(|| format!("Missing value for {}", args[i - 1]))?
                     .to_string();
             }
             "--username" | "--user" | "-u" => {
                 i += 1;
                 username = args
                     .get(i)
-                    .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                    .ok_or_else(|| format!("Missing value for {}", args[i - 1]))?
                     .to_string();
             }
             "--surreal-auth-username" | "--auth-username" | "--surreal-user" => {
                 i += 1;
                 auth_username = Some(
                     args.get(i)
-                        .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                        .ok_or_else(|| format!("Missing value for {}", args[i - 1]))?
                         .to_string(),
                 );
             }
@@ -131,7 +154,7 @@ fn parse_cli(args: &[String]) -> CliSurrealConfig {
                 i += 1;
                 auth_password = Some(
                     args.get(i)
-                        .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                        .ok_or_else(|| format!("Missing value for {}", args[i - 1]))?
                         .to_string(),
                 );
             }
@@ -139,24 +162,65 @@ fn parse_cli(args: &[String]) -> CliSurrealConfig {
                 i += 1;
                 auth_level = Some(
                     args.get(i)
-                        .unwrap_or_else(|| panic!("Missing value for {}", args[i - 1]))
+                        .ok_or_else(|| format!("Missing value for {}", args[i - 1]))?
                         .to_string(),
                 );
             }
-            // Ignore positional args we already handle (like `inmemorydb`)
-            _ => {}
+            "--initialize-from-endpoint" => {
+                i += 1;
+                initialize_from_endpoint = Some(
+                    args.get(i)
+                        .ok_or_else(|| format!("Missing value for {}", args[i - 1]))?
+                        .to_string(),
+                );
+            }
+            "--initialize-from-namespace" => {
+                i += 1;
+                initialize_from_namespace = Some(
+                    args.get(i)
+                        .ok_or_else(|| format!("Missing value for {}", args[i - 1]))?
+                        .to_string(),
+                );
+            }
+            "--initialize-from-database" | "--initialize-from-db" => {
+                i += 1;
+                initialize_from_database = Some(
+                    args.get(i)
+                        .ok_or_else(|| format!("Missing value for {}", args[i - 1]))?
+                        .to_string(),
+                );
+            }
+            "--force" => {
+                initialize_from_copy_behavior = CopyDestinationBehavior::ForceDeleteExisting;
+            }
+            _ => {
+                return Err(format!("Unknown argument '{}'. Try --help.", args[i]));
+            }
         }
         i += 1;
     }
 
-    CliSurrealConfig {
+    if initialize_from_database.is_none()
+        && (initialize_from_endpoint.is_some() || initialize_from_namespace.is_some())
+    {
+        return Err(
+            "--initialize-from-endpoint/--initialize-from-namespace require --initialize-from-database"
+                .to_string(),
+        );
+    }
+
+    Ok(CliSurrealConfig {
         endpoint,
         namespace,
         username,
         auth_username,
         auth_password,
         auth_level,
-    }
+        initialize_from_endpoint,
+        initialize_from_namespace,
+        initialize_from_database,
+        initialize_from_copy_behavior,
+    })
 }
 
 #[global_allocator]
@@ -194,7 +258,77 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         mpsc::channel(commands_in_flight_limit);
 
     let args: Vec<String> = env::args().collect();
-    let surreal_cli = parse_cli(&args);
+    let surreal_cli = match parse_cli(&args) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("Error parsing CLI args: {err}\nTry --help.");
+            std::process::exit(2);
+        }
+    };
+
+    let auth = match (
+        surreal_cli.auth_username.clone(),
+        surreal_cli.auth_password.clone(),
+    ) {
+        (Some(user), Some(pass)) => Some(SurrealAuthConfig {
+            username: user,
+            password: pass,
+            level: surreal_cli.auth_level.clone(),
+        }),
+        (None, None) => None,
+        _ => {
+            eprintln!(
+                "If providing SurrealDB auth, you must provide both --surreal-auth-username and --surreal-auth-password."
+            );
+            process::exit(2);
+        }
+    };
+
+    // One-shot: copy data from a source DB into the destination DB (destination must be empty).
+    if let Some(initialize_from_db) = surreal_cli.initialize_from_database.clone() {
+        let source = data_layer_commands::SurrealDbConnectionConfig {
+            endpoint: surreal_cli
+                .initialize_from_endpoint
+                .clone()
+                .unwrap_or_else(|| surreal_cli.endpoint.clone()),
+            namespace: surreal_cli
+                .initialize_from_namespace
+                .clone()
+                .unwrap_or_else(|| surreal_cli.namespace.clone()),
+            database: initialize_from_db,
+            auth: auth.clone(),
+        };
+        let destination = data_layer_commands::SurrealDbConnectionConfig {
+            endpoint: surreal_cli.endpoint.clone(),
+            namespace: surreal_cli.namespace.clone(),
+            database: surreal_cli.username.clone(),
+            auth: auth.clone(),
+        };
+
+        eprintln!(
+            "Copying SurrealDB data: src(endpoint='{}' ns='{}' db='{}') -> dest(endpoint='{}' ns='{}' db='{}')",
+            source.endpoint,
+            source.namespace,
+            source.database,
+            destination.endpoint,
+            destination.namespace,
+            destination.database
+        );
+
+        if let Err(err) = data_layer_commands::copy_database_if_destination_empty(
+            source,
+            destination,
+            surreal_cli.initialize_from_copy_behavior,
+        )
+        .await
+        {
+            eprintln!("Copy failed: {err}");
+            process::exit(2);
+        }
+
+        eprintln!("Copy complete.");
+        return Ok(());
+    }
 
     let data_storage_join_handle = tokio::spawn(async move {
         data_storage_start_and_run(
@@ -203,27 +337,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 endpoint: surreal_cli.endpoint,
                 namespace: surreal_cli.namespace,
                 database: surreal_cli.username,
-                auth: match (surreal_cli.auth_username, surreal_cli.auth_password) {
-                    (Some(user), Some(pass)) => Some(
-                        crate::data_storage::surrealdb_layer::data_layer_commands::SurrealAuthConfig {
-                            username: user,
-                            password: pass,
-                            level: surreal_cli.auth_level,
-                        },
-                    ),
-                    (None, None) => None,
-                    _ => {
-                        eprintln!(
-                            "If providing SurrealDB auth, you must provide both --surreal-auth-username and --surreal-auth-password."
-                        );
-                        std::process::exit(2);
-                    }
-                },
+                auth,
             },
         )
         .await
     });
-
     //If the current executable is more than 3 months old print a message that there is probably a newer version available
     let exe_path = env::current_exe().unwrap();
     let exe_metadata = exe_path.metadata().unwrap();
@@ -254,6 +372,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Done");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_cli;
+
+    #[test]
+    fn parse_cli_rejects_single_dash_username_flag() {
+        let args = vec![
+            "taskonpurpose".to_string(),
+            "-username".to_string(),
+            "nash".to_string(),
+        ];
+
+        // This should be rejected; the correct flag is `--username` or `-u`.
+        // (Added as a regression test; it should fail before we implement the behavior.)
+        assert!(parse_cli(&args).is_err());
+    }
+
+    #[test]
+    fn parse_cli_errors_on_unknown_argument() {
+        let args = vec!["taskonpurpose".to_string(), "--unexpected".to_string()];
+        let err = parse_cli(&args).expect_err("Should fail for unknown argument");
+        assert!(err.contains("Unknown argument"));
+    }
 }
 
 /// Prints the OnPurpose hourglass logo to stdout as a sixel-encoded image.
