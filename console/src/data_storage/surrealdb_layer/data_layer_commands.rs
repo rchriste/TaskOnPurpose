@@ -805,7 +805,7 @@ async fn copy_surreal_tables_preserving_ids(
     tables: SurrealTables,
 ) -> Result<(), String> {
     // Copy records preserving record IDs so references remain valid.
-    //Note that if a new table is added to the database then the below code needs to be updated to copy that table as well.
+    // Note that if a new table is added to the database then the below code needs to be updated to copy that table as well.
     let (items, time_spent, priorities, current_mode, modes, events) = join!(
         biased; // prefer earlier futures to run first as they should have more data
         copy_surreal_items_preserving_ids(db, tables.surreal_items),
