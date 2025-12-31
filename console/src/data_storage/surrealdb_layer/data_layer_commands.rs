@@ -129,6 +129,85 @@ where
     Box::pin(future)
 }
 
+/// Trait for types that have an optional RecordId.
+trait HasRecordId {
+    fn record_id(&self) -> Option<&RecordId>;
+}
+
+impl HasRecordId for SurrealItem {
+    fn record_id(&self) -> Option<&RecordId> {
+        self.id.as_ref()
+    }
+}
+
+impl HasRecordId for SurrealTimeSpent {
+    fn record_id(&self) -> Option<&RecordId> {
+        self.id.as_ref()
+    }
+}
+
+impl HasRecordId for SurrealInTheMomentPriority {
+    fn record_id(&self) -> Option<&RecordId> {
+        self.id.as_ref()
+    }
+}
+
+impl HasRecordId for SurrealCurrentMode {
+    fn record_id(&self) -> Option<&RecordId> {
+        self.id.as_ref()
+    }
+}
+
+impl HasRecordId for SurrealMode {
+    fn record_id(&self) -> Option<&RecordId> {
+        self.id.as_ref()
+    }
+}
+
+impl HasRecordId for SurrealEvent {
+    fn record_id(&self) -> Option<&RecordId> {
+        self.id.as_ref()
+    }
+}
+
+/// Generic helper function to delete a record from the database.
+async fn delete_record<T>(
+    db: &Surreal<Any>,
+    id: &RecordId,
+    type_name: &str,
+) -> Result<(), String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let deleted: Option<T> = db
+        .delete(id)
+        .await
+        .map_err(|e| format!("Failed to delete {} {:?}: {e:?}", type_name, id))?;
+    deleted.ok_or_else(|| format!("{} {:?} not found for deletion", type_name, id))?;
+    Ok(())
+}
+
+/// Helper function to create a stream of deletion futures for a collection of records.
+fn create_delete_stream<'a, T, R>(
+    db: &'a Surreal<Any>,
+    records: Vec<R>,
+    type_name: &'static str,
+) -> impl futures::Stream<Item = DeleteFuture<'a>>
+where
+    T: serde::de::DeserializeOwned + 'a,
+    R: HasRecordId + 'a,
+{
+    stream::iter(records).map(move |record| {
+        let id_opt = record.record_id().cloned();
+        box_delete_future(async move {
+            if let Some(id) = id_opt {
+                delete_record::<T>(db, &id, type_name).await?;
+            }
+            Ok(())
+        })
+    })
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct SurrealDbConnectionConfig {
     pub(crate) endpoint: String,
@@ -786,102 +865,32 @@ async fn copy_between_databases_if_destination_empty_same_connection(
 }
 
 async fn clear_surreal_tables(db: &Surreal<Any>, tables: SurrealTables) -> Result<(), String> {
-    stream::iter(tables.surreal_items.into_iter())
-        .map(|record| {
-            box_delete_future(async move {
-                if let Some(id) = record.id {
-                    let deleted: Option<SurrealItem> = db
-                        .delete(&id)
-                        .await
-                        .map_err(|e| format!("Failed to delete SurrealItem {:?}: {e:?}", id))?;
-                    deleted
-                        .ok_or_else(|| format!("SurrealItem {:?} not found for deletion", id))?;
-                }
-                Ok(())
-            })
-        })
-        .chain(
-            stream::iter(tables.surreal_time_spent_log.into_iter()).map(|record| {
-                box_delete_future(async move {
-                    if let Some(id) = record.id {
-                        let deleted: Option<SurrealTimeSpent> =
-                            db.delete(&id).await.map_err(|e| {
-                                format!("Failed to delete SurrealTimeSpent {:?}: {e:?}", id)
-                            })?;
-                        deleted.ok_or_else(|| {
-                            format!("SurrealTimeSpent {:?} not found for deletion", id)
-                        })?;
-                    }
-                    Ok(())
-                })
-            }),
-        )
-        .chain(
-            stream::iter(tables.surreal_in_the_moment_priorities.into_iter()).map(|record| {
-                box_delete_future(async move {
-                    if let Some(id) = record.id {
-                        let deleted: Option<SurrealInTheMomentPriority> =
-                            db.delete(&id).await.map_err(|e| {
-                                format!(
-                                    "Failed to delete SurrealInTheMomentPriority {:?}: {e:?}",
-                                    id
-                                )
-                            })?;
-                        deleted.ok_or_else(|| {
-                            format!("SurrealInTheMomentPriority {:?} not found for deletion", id)
-                        })?;
-                    }
-                    Ok(())
-                })
-            }),
-        )
-        .chain(
-            stream::iter(tables.surreal_current_modes.into_iter()).map(|record| {
-                box_delete_future(async move {
-                    if let Some(id) = record.id {
-                        let deleted: Option<SurrealCurrentMode> =
-                            db.delete(&id).await.map_err(|e| {
-                                format!("Failed to delete SurrealCurrentMode {:?}: {e:?}", id)
-                            })?;
-                        deleted.ok_or_else(|| {
-                            format!("SurrealCurrentMode {:?} not found for deletion", id)
-                        })?;
-                    }
-                    Ok(())
-                })
-            }),
-        )
-        .chain(
-            stream::iter(tables.surreal_modes.into_iter()).map(|record| {
-                box_delete_future(async move {
-                    if let Some(id) = record.id {
-                        let deleted: Option<SurrealMode> = db
-                            .delete(&id)
-                            .await
-                            .map_err(|e| format!("Failed to delete SurrealMode {:?}: {e:?}", id))?;
-                        deleted.ok_or_else(|| {
-                            format!("SurrealMode {:?} not found for deletion", id)
-                        })?;
-                    }
-                    Ok(())
-                })
-            }),
-        )
-        .chain(
-            stream::iter(tables.surreal_events.into_iter()).map(|record| {
-                box_delete_future(async move {
-                    if let Some(id) = record.id {
-                        let deleted: Option<SurrealEvent> = db.delete(&id).await.map_err(|e| {
-                            format!("Failed to delete SurrealEvent {:?}: {e:?}", id)
-                        })?;
-                        deleted.ok_or_else(|| {
-                            format!("SurrealEvent {:?} not found for deletion", id)
-                        })?;
-                    }
-                    Ok(())
-                })
-            }),
-        )
+    create_delete_stream::<SurrealItem, _>(db, tables.surreal_items, "SurrealItem")
+        .chain(create_delete_stream::<SurrealTimeSpent, _>(
+            db,
+            tables.surreal_time_spent_log,
+            "SurrealTimeSpent",
+        ))
+        .chain(create_delete_stream::<SurrealInTheMomentPriority, _>(
+            db,
+            tables.surreal_in_the_moment_priorities,
+            "SurrealInTheMomentPriority",
+        ))
+        .chain(create_delete_stream::<SurrealCurrentMode, _>(
+            db,
+            tables.surreal_current_modes,
+            "SurrealCurrentMode",
+        ))
+        .chain(create_delete_stream::<SurrealMode, _>(
+            db,
+            tables.surreal_modes,
+            "SurrealMode",
+        ))
+        .chain(create_delete_stream::<SurrealEvent, _>(
+            db,
+            tables.surreal_events,
+            "SurrealEvent",
+        ))
         .buffer_unordered(100)
         .fold(Ok(()), |acc, res| async {
             match (acc, res) {
