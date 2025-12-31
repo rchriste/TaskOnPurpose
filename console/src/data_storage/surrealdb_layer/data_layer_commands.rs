@@ -819,7 +819,7 @@ async fn copy_surreal_tables_preserving_ids(
         copy_surreal_current_modes_preserving_ids(db, tables.surreal_current_modes),
     );
 
-    //? mark operator can't be done inside the join! macro so do it here
+    // The `?` error propagation operator can't be used inside the join! macro, so apply it here.
     items?;
     time_spent?;
     priorities?;
