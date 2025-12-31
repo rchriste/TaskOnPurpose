@@ -584,7 +584,7 @@ async fn copy_surreal_items_preserving_ids(
     db: &Surreal<Any>,
     surreal_items: Vec<SurrealItem>,
 ) -> Result<(), String> {
-    stream::iter(surreal_items.into_iter()) //wrap in a stream so we can use buffer_ordered below
+    stream::iter(surreal_items.into_iter()) // wrap in a stream so we can use buffer_unordered below to limit concurrency
         .map(|record| async move {
             let mut updated: Vec<SurrealItem> = db
                 .upsert(SurrealItem::TABLE_NAME)
@@ -819,7 +819,7 @@ async fn copy_surreal_tables_preserving_ids(
         copy_surreal_current_modes_preserving_ids(db, tables.surreal_current_modes),
     );
 
-    //? mark operator can't be done inside the join! macro so do it here
+    // The `?` error propagation operator can't be used inside the join! macro, so apply it here.
     items?;
     time_spent?;
     priorities?;
