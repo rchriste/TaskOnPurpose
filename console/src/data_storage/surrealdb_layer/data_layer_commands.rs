@@ -584,7 +584,7 @@ async fn copy_surreal_items_preserving_ids(
     db: &Surreal<Any>,
     surreal_items: Vec<SurrealItem>,
 ) -> Result<(), String> {
-    stream::iter(surreal_items.into_iter()) //wrap in a stream so we can use buffer_ordered below
+    stream::iter(surreal_items.into_iter()) // wrap in a stream so we can use buffer_unordered below to limit concurrency
         .map(|record| async move {
             let mut updated: Vec<SurrealItem> = db
                 .upsert(SurrealItem::TABLE_NAME)
