@@ -67,10 +67,10 @@ Options:
   --surreal-endpoint, -e        SurrealDB connection string/endpoint (e.g. mem://, file://..., ws://...)
   --namespace, -n               SurrealDB namespace (default: TaskOnPurpose)
   --username, --user, -u        Username to use as the SurrealDB *database name* (default: OS user)
-  --initialize-from-database    This option makes it possible to state the initialize from username as the username is how the database name is set. One-shot: copy all data from a source SurrealDB database into the destination database, but only if the destination is empty
+  --initialize-from-database    This option makes it possible to state the initialize-from username, as the username is how the database name is set. One-shot: copy all data from a source SurrealDB database into the destination database, but only if the destination is empty (unless used together with --force, which first deletes all existing data in the destination)
   --initialize-from-endpoint    Source endpoint for --initialize-from-database (default: same as destination endpoint)
   --initialize-from-namespace   Source namespace for --initialize-from-database (default: same as destination namespace)
-  --force                       When the destination database already contains data, delete it before copying (use with caution!)
+  --force                       Use with --initialize-from-database: when the destination database already contains data, delete it before copying (overrides the 'destination must be empty' requirement; use with extreme caution!)
   --surreal-auth-username       SurrealDB login username (optional; used for remote auth)
   --surreal-auth-password       SurrealDB login password (optional; used for remote auth)
   --surreal-auth-level          SurrealDB auth level: root | ns | db (default: root)
