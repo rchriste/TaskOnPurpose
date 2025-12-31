@@ -129,7 +129,11 @@ where
     Box::pin(future)
 }
 
-/// Trait for types that have an optional RecordId.
+/// Trait for SurrealDB record types that have an optional RecordId.
+/// 
+/// This trait provides a common interface for accessing the `id` field of 
+/// SurrealDB record types. It's used by generic deletion helper functions
+/// to extract record IDs for deletion operations.
 trait HasRecordId {
     fn record_id(&self) -> Option<&RecordId>;
 }
