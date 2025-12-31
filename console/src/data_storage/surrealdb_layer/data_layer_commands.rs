@@ -580,27 +580,82 @@ async fn connect_and_prepare(config: &SurrealDbConnectionConfig) -> Result<Surre
     }
     Ok(db)
 }
-async fn copy_surreal_items_preserving_ids(
+
+/// Trait for types that can be copied to the database preserving their IDs.
+/// This trait is used to abstract over different SurrealDB table types.
+trait SurrealTable: serde::Serialize + serde::de::DeserializeOwned + Clone + Send + std::fmt::Debug + 'static {
+    /// The name of the table in the database
+    const TABLE_NAME: &'static str;
+    
+    /// Get the record ID if it exists
+    fn id(&self) -> &Option<RecordId>;
+    
+    /// Get a human-readable type name for error messages
+    fn type_name() -> &'static str;
+}
+
+impl SurrealTable for SurrealItem {
+    const TABLE_NAME: &'static str = SurrealItem::TABLE_NAME;
+    fn id(&self) -> &Option<RecordId> { &self.id }
+    fn type_name() -> &'static str { "SurrealItem" }
+}
+
+impl SurrealTable for SurrealTimeSpent {
+    const TABLE_NAME: &'static str = SurrealTimeSpent::TABLE_NAME;
+    fn id(&self) -> &Option<RecordId> { &self.id }
+    fn type_name() -> &'static str { "SurrealTimeSpent" }
+}
+
+impl SurrealTable for SurrealInTheMomentPriority {
+    const TABLE_NAME: &'static str = SurrealInTheMomentPriority::TABLE_NAME;
+    fn id(&self) -> &Option<RecordId> { &self.id }
+    fn type_name() -> &'static str { "SurrealInTheMomentPriority" }
+}
+
+impl SurrealTable for SurrealCurrentMode {
+    const TABLE_NAME: &'static str = SurrealCurrentMode::TABLE_NAME;
+    fn id(&self) -> &Option<RecordId> { &self.id }
+    fn type_name() -> &'static str { "SurrealCurrentMode" }
+}
+
+impl SurrealTable for SurrealMode {
+    const TABLE_NAME: &'static str = surreal_mode::SurrealMode::TABLE_NAME;
+    fn id(&self) -> &Option<RecordId> { &self.id }
+    fn type_name() -> &'static str { "SurrealMode" }
+}
+
+impl SurrealTable for SurrealEvent {
+    const TABLE_NAME: &'static str = SurrealEvent::TABLE_NAME;
+    fn id(&self) -> &Option<RecordId> { &self.id }
+    fn type_name() -> &'static str { "SurrealEvent" }
+}
+
+/// Generic function to copy records to the database preserving their IDs.
+/// This function handles the common pattern of upserting records with a fallback to insert.
+async fn copy_records_preserving_ids<T>(
     db: &Surreal<Any>,
-    surreal_items: Vec<SurrealItem>,
-) -> Result<(), String> {
-    stream::iter(surreal_items.into_iter()) // wrap in a stream so we can use buffer_unordered below to limit concurrency
+    records: Vec<T>,
+) -> Result<(), String>
+where
+    T: SurrealTable,
+{
+    stream::iter(records.into_iter()) // wrap in a stream so we can use buffer_unordered below to limit concurrency
         .map(|record| async move {
-            let mut updated: Vec<SurrealItem> = db
-                .upsert(SurrealItem::TABLE_NAME)
+            let mut updated: Vec<T> = db
+                .upsert(T::TABLE_NAME)
                 .content(record.clone())
                 .await
-                .map_err(|e| format!("Failed to upsert SurrealItem: {e:?}"))?;
+                .map_err(|e| format!("Failed to upsert {}: {e:?}", T::type_name()))?;
             if updated.is_empty() {
                 // Same workaround as elsewhere in this file: upsert can silently do nothing.
                 updated = db
-                    .insert(SurrealItem::TABLE_NAME)
+                    .insert(T::TABLE_NAME)
                     .content(record.clone())
                     .await
-                    .map_err(|e| format!("Failed to insert SurrealItem: {e:?}"))?;
+                    .map_err(|e| format!("Failed to insert {}: {e:?}", T::type_name()))?;
             }
             if updated.is_empty() {
-                return Err(format!("Failed to copy SurrealItem {:?}", record.id));
+                return Err(format!("Failed to copy {} {:?}", T::type_name(), record.id()));
             }
 
             Ok(())
@@ -617,187 +672,46 @@ async fn copy_surreal_items_preserving_ids(
     Ok(())
 }
 
+async fn copy_surreal_items_preserving_ids(
+    db: &Surreal<Any>,
+    surreal_items: Vec<SurrealItem>,
+) -> Result<(), String> {
+    copy_records_preserving_ids(db, surreal_items).await
+}
+
 async fn copy_surreal_time_spent_preserving_ids(
     db: &Surreal<Any>,
     surreal_time_spent_log: Vec<SurrealTimeSpent>,
 ) -> Result<(), String> {
-    stream::iter(surreal_time_spent_log.into_iter())
-        .map(|record| async move {
-            let mut updated: Vec<SurrealTimeSpent> = db
-                .upsert(SurrealTimeSpent::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .map_err(|e| format!("Failed to upsert SurrealTimeSpent: {e:?}"))?;
-            if updated.is_empty() {
-                updated = db
-                    .insert(SurrealTimeSpent::TABLE_NAME)
-                    .content(record.clone())
-                    .await
-                    .map_err(|e| format!("Failed to insert SurrealTimeSpent: {e:?}"))?;
-            }
-            if updated.is_empty() {
-                return Err(format!("Failed to copy SurrealTimeSpent {:?}", record.id));
-            }
-
-            Ok(())
-        })
-        .buffer_unordered(100)
-        .fold(Ok(()), |acc, res| async {
-            match (acc, res) {
-                (Ok(_), Ok(())) => Ok(()),
-                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
-            }
-        })
-        .await?;
-
-    Ok(())
+    copy_records_preserving_ids(db, surreal_time_spent_log).await
 }
 
 async fn copy_surreal_in_the_moment_priorities_preserving_ids(
     db: &Surreal<Any>,
     surreal_in_the_moment_priorities: Vec<SurrealInTheMomentPriority>,
 ) -> Result<(), String> {
-    stream::iter(surreal_in_the_moment_priorities.into_iter())
-        .map(|record| async move {
-            let mut updated: Vec<SurrealInTheMomentPriority> = db
-                .upsert(SurrealInTheMomentPriority::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .map_err(|e| format!("Failed to upsert SurrealInTheMomentPriority: {e:?}"))?;
-            if updated.is_empty() {
-                updated = db
-                    .insert(SurrealInTheMomentPriority::TABLE_NAME)
-                    .content(record.clone())
-                    .await
-                    .map_err(|e| format!("Failed to insert SurrealInTheMomentPriority: {e:?}"))?;
-            }
-            if updated.is_empty() {
-                return Err(format!(
-                    "Failed to copy SurrealInTheMomentPriority {:?}",
-                    record.id
-                ));
-            }
-
-            Ok(())
-        })
-        .buffer_unordered(100)
-        .fold(Ok(()), |acc, res| async {
-            match (acc, res) {
-                (Ok(_), Ok(())) => Ok(()),
-                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
-            }
-        })
-        .await?;
-
-    Ok(())
+    copy_records_preserving_ids(db, surreal_in_the_moment_priorities).await
 }
 
 async fn copy_surreal_current_modes_preserving_ids(
     db: &Surreal<Any>,
     surreal_current_modes: Vec<SurrealCurrentMode>,
 ) -> Result<(), String> {
-    stream::iter(surreal_current_modes.into_iter())
-        .map(|record| async move {
-            let mut updated: Vec<SurrealCurrentMode> = db
-                .upsert(SurrealCurrentMode::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .map_err(|e| format!("Failed to upsert SurrealCurrentMode: {e:?}"))?;
-            if updated.is_empty() {
-                updated = db
-                    .insert(SurrealCurrentMode::TABLE_NAME)
-                    .content(record.clone())
-                    .await
-                    .map_err(|e| format!("Failed to insert SurrealCurrentMode: {e:?}"))?;
-            }
-            if updated.is_empty() {
-                return Err(format!("Failed to copy SurrealCurrentMode {:?}", record.id));
-            }
-
-            Ok(())
-        })
-        .buffer_unordered(100)
-        .fold(Ok(()), |acc, res| async {
-            match (acc, res) {
-                (Ok(_), Ok(())) => Ok(()),
-                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
-            }
-        })
-        .await?;
-
-    Ok(())
+    copy_records_preserving_ids(db, surreal_current_modes).await
 }
 
 async fn copy_surreal_modes_preserving_ids(
     db: &Surreal<Any>,
     surreal_modes: Vec<SurrealMode>,
 ) -> Result<(), String> {
-    stream::iter(surreal_modes.into_iter())
-        .map(|record| async move {
-            let mut updated: Vec<SurrealMode> = db
-                .upsert(surreal_mode::SurrealMode::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .map_err(|e| format!("Failed to upsert SurrealMode: {e:?}"))?;
-            if updated.is_empty() {
-                updated = db
-                    .insert(surreal_mode::SurrealMode::TABLE_NAME)
-                    .content(record.clone())
-                    .await
-                    .map_err(|e| format!("Failed to insert SurrealMode: {e:?}"))?;
-            }
-            if updated.is_empty() {
-                return Err(format!("Failed to copy SurrealMode {:?}", record.id));
-            }
-
-            Ok(())
-        })
-        .buffer_unordered(100)
-        .fold(Ok(()), |acc, res| async {
-            match (acc, res) {
-                (Ok(_), Ok(())) => Ok(()),
-                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
-            }
-        })
-        .await?;
-
-    Ok(())
+    copy_records_preserving_ids(db, surreal_modes).await
 }
 
 async fn copy_surreal_events_preserving_ids(
     db: &Surreal<Any>,
     surreal_events: Vec<SurrealEvent>,
 ) -> Result<(), String> {
-    stream::iter(surreal_events.into_iter())
-        .map(|record| async move {
-            let mut updated: Vec<SurrealEvent> = db
-                .upsert(SurrealEvent::TABLE_NAME)
-                .content(record.clone())
-                .await
-                .map_err(|e| format!("Failed to upsert SurrealEvent: {e:?}"))?;
-            if updated.is_empty() {
-                updated = db
-                    .insert(SurrealEvent::TABLE_NAME)
-                    .content(record.clone())
-                    .await
-                    .map_err(|e| format!("Failed to insert SurrealEvent: {e:?}"))?;
-            }
-            if updated.is_empty() {
-                return Err(format!("Failed to copy SurrealEvent {:?}", record.id));
-            }
-
-            Ok(())
-        })
-        .buffer_unordered(100)
-        .fold(Ok(()), |acc, res| async {
-            match (acc, res) {
-                (Ok(_), Ok(())) => Ok(()),
-                (Err(e), _) | (Ok(()), Err(e)) => Err(e),
-            }
-        })
-        .await?;
-
-    Ok(())
+    copy_records_preserving_ids(db, surreal_events).await
 }
 
 async fn copy_surreal_tables_preserving_ids(
