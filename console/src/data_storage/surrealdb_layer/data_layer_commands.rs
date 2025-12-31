@@ -586,21 +586,23 @@ async fn copy_surreal_items_preserving_ids(
 ) -> Result<(), String> {
     stream::iter(surreal_items.into_iter()) // wrap in a stream so we can use buffer_unordered below to limit concurrency
         .map(|record| async move {
+            let record_id = record.id.clone();
+            let record_for_retry = record.clone();
             let mut updated: Vec<SurrealItem> = db
                 .upsert(SurrealItem::TABLE_NAME)
-                .content(record.clone())
+                .content(record)
                 .await
                 .map_err(|e| format!("Failed to upsert SurrealItem: {e:?}"))?;
             if updated.is_empty() {
                 // Same workaround as elsewhere in this file: upsert can silently do nothing.
                 updated = db
                     .insert(SurrealItem::TABLE_NAME)
-                    .content(record.clone())
+                    .content(record_for_retry)
                     .await
                     .map_err(|e| format!("Failed to insert SurrealItem: {e:?}"))?;
             }
             if updated.is_empty() {
-                return Err(format!("Failed to copy SurrealItem {:?}", record.id));
+                return Err(format!("Failed to copy SurrealItem {:?}", record_id));
             }
 
             Ok(())
@@ -623,20 +625,22 @@ async fn copy_surreal_time_spent_preserving_ids(
 ) -> Result<(), String> {
     stream::iter(surreal_time_spent_log.into_iter())
         .map(|record| async move {
+            let record_id = record.id.clone();
+            let record_for_retry = record.clone();
             let mut updated: Vec<SurrealTimeSpent> = db
                 .upsert(SurrealTimeSpent::TABLE_NAME)
-                .content(record.clone())
+                .content(record)
                 .await
                 .map_err(|e| format!("Failed to upsert SurrealTimeSpent: {e:?}"))?;
             if updated.is_empty() {
                 updated = db
                     .insert(SurrealTimeSpent::TABLE_NAME)
-                    .content(record.clone())
+                    .content(record_for_retry)
                     .await
                     .map_err(|e| format!("Failed to insert SurrealTimeSpent: {e:?}"))?;
             }
             if updated.is_empty() {
-                return Err(format!("Failed to copy SurrealTimeSpent {:?}", record.id));
+                return Err(format!("Failed to copy SurrealTimeSpent {:?}", record_id));
             }
 
             Ok(())
@@ -659,22 +663,24 @@ async fn copy_surreal_in_the_moment_priorities_preserving_ids(
 ) -> Result<(), String> {
     stream::iter(surreal_in_the_moment_priorities.into_iter())
         .map(|record| async move {
+            let record_id = record.id.clone();
+            let record_for_retry = record.clone();
             let mut updated: Vec<SurrealInTheMomentPriority> = db
                 .upsert(SurrealInTheMomentPriority::TABLE_NAME)
-                .content(record.clone())
+                .content(record)
                 .await
                 .map_err(|e| format!("Failed to upsert SurrealInTheMomentPriority: {e:?}"))?;
             if updated.is_empty() {
                 updated = db
                     .insert(SurrealInTheMomentPriority::TABLE_NAME)
-                    .content(record.clone())
+                    .content(record_for_retry)
                     .await
                     .map_err(|e| format!("Failed to insert SurrealInTheMomentPriority: {e:?}"))?;
             }
             if updated.is_empty() {
                 return Err(format!(
                     "Failed to copy SurrealInTheMomentPriority {:?}",
-                    record.id
+                    record_id
                 ));
             }
 
