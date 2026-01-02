@@ -865,31 +865,31 @@ async fn copy_between_databases_if_destination_empty_same_connection(
 }
 
 async fn clear_surreal_tables(db: &Surreal<Any>, tables: SurrealTables) -> Result<(), String> {
-    create_delete_stream::<SurrealItem, _>(db, tables.surreal_items, "SurrealItem")
+    create_delete_stream::<SurrealItem, _>(db, tables.surreal_items, SurrealItem::TABLE_NAME)
         .chain(create_delete_stream::<SurrealTimeSpent, _>(
             db,
             tables.surreal_time_spent_log,
-            "SurrealTimeSpent",
+            SurrealTimeSpent::TABLE_NAME,
         ))
         .chain(create_delete_stream::<SurrealInTheMomentPriority, _>(
             db,
             tables.surreal_in_the_moment_priorities,
-            "SurrealInTheMomentPriority",
+            SurrealInTheMomentPriority::TABLE_NAME,
         ))
         .chain(create_delete_stream::<SurrealCurrentMode, _>(
             db,
             tables.surreal_current_modes,
-            "SurrealCurrentMode",
+            SurrealCurrentMode::TABLE_NAME,
         ))
         .chain(create_delete_stream::<SurrealMode, _>(
             db,
             tables.surreal_modes,
-            "SurrealMode",
+            SurrealMode::TABLE_NAME,
         ))
         .chain(create_delete_stream::<SurrealEvent, _>(
             db,
             tables.surreal_events,
-            "SurrealEvent",
+            SurrealEvent::TABLE_NAME,
         ))
         .buffer_unordered(100)
         .fold(Ok(()), |acc, res| async {
