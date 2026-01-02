@@ -130,8 +130,8 @@ where
 }
 
 /// Trait for SurrealDB record types that have an optional RecordId.
-/// 
-/// This trait provides a common interface for accessing the `id` field of 
+///
+/// This trait provides a common interface for accessing the `id` field of
 /// SurrealDB record types. It's used by generic deletion helper functions
 /// to extract record IDs for deletion operations.
 trait HasRecordId {
@@ -175,11 +175,7 @@ impl HasRecordId for SurrealEvent {
 }
 
 /// Generic helper function to delete a record from the database.
-async fn delete_record<T>(
-    db: &Surreal<Any>,
-    id: &RecordId,
-    type_name: &str,
-) -> Result<(), String>
+async fn delete_record<T>(db: &Surreal<Any>, id: &RecordId, type_name: &str) -> Result<(), String>
 where
     T: serde::de::DeserializeOwned,
 {
