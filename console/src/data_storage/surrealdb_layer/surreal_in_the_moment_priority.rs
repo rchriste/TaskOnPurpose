@@ -19,6 +19,12 @@ pub(crate) struct SurrealInTheMomentPriority {
     pub(crate) created: Datetime,
 }
 
+impl From<SurrealInTheMomentPriority> for Option<RecordId> {
+    fn from(value: SurrealInTheMomentPriority) -> Self {
+        value.id
+    }
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
 pub(crate) enum SurrealAction {
     SetReadyAndUrgency(RecordId),

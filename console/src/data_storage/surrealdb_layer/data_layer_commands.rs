@@ -129,51 +129,6 @@ where
     Box::pin(future)
 }
 
-/// Trait for SurrealDB record types that have an optional RecordId.
-///
-/// This trait provides a common interface for accessing the `id` field of
-/// SurrealDB record types. It's used by generic deletion helper functions
-/// to extract record IDs for deletion operations.
-trait HasRecordId {
-    fn record_id(&self) -> Option<&RecordId>;
-}
-
-impl HasRecordId for SurrealItem {
-    fn record_id(&self) -> Option<&RecordId> {
-        self.id.as_ref()
-    }
-}
-
-impl HasRecordId for SurrealTimeSpent {
-    fn record_id(&self) -> Option<&RecordId> {
-        self.id.as_ref()
-    }
-}
-
-impl HasRecordId for SurrealInTheMomentPriority {
-    fn record_id(&self) -> Option<&RecordId> {
-        self.id.as_ref()
-    }
-}
-
-impl HasRecordId for SurrealCurrentMode {
-    fn record_id(&self) -> Option<&RecordId> {
-        self.id.as_ref()
-    }
-}
-
-impl HasRecordId for SurrealMode {
-    fn record_id(&self) -> Option<&RecordId> {
-        self.id.as_ref()
-    }
-}
-
-impl HasRecordId for SurrealEvent {
-    fn record_id(&self) -> Option<&RecordId> {
-        self.id.as_ref()
-    }
-}
-
 /// Generic helper function to delete a record from the database.
 async fn delete_record<T>(db: &Surreal<Any>, id: &RecordId, type_name: &str) -> Result<(), String>
 where
@@ -195,10 +150,10 @@ fn create_delete_stream<'a, T, R>(
 ) -> impl futures::Stream<Item = DeleteFuture<'a>>
 where
     T: serde::de::DeserializeOwned + 'a,
-    R: HasRecordId + 'a,
+    R: Into<Option<RecordId>> + 'a,
 {
     stream::iter(records).map(move |record| {
-        let id_opt = record.record_id().cloned();
+        let id_opt: Option<RecordId> = record.into();
         box_delete_future(async move {
             if let Some(id) = id_opt {
                 delete_record::<T>(db, &id, type_name).await?;
