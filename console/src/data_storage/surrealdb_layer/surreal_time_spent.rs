@@ -17,6 +17,12 @@ pub(crate) struct SurrealTimeSpent {
     pub(crate) dedication: Option<SurrealDedication>,
 }
 
+impl From<SurrealTimeSpent> for Option<RecordId> {
+    fn from(value: SurrealTimeSpent) -> Self {
+        value.id
+    }
+}
+
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Hash)]
 pub(crate) enum SurrealWhyInScope {
     Importance,

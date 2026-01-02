@@ -12,6 +12,12 @@ pub(crate) struct SurrealEvent {
     pub(crate) summary: String,
 }
 
+impl From<SurrealEvent> for Option<RecordId> {
+    fn from(value: SurrealEvent) -> Self {
+        value.id
+    }
+}
+
 impl From<NewEvent> for SurrealEvent {
     fn from(new_event: NewEvent) -> Self {
         SurrealEvent {
