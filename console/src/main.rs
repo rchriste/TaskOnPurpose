@@ -374,31 +374,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::parse_cli;
-
-    #[test]
-    fn parse_cli_rejects_single_dash_username_flag() {
-        let args = vec![
-            "taskonpurpose".to_string(),
-            "-username".to_string(),
-            "nash".to_string(),
-        ];
-
-        // This should be rejected; the correct flag is `--username` or `-u`.
-        // (Added as a regression test; it should fail before we implement the behavior.)
-        assert!(parse_cli(&args).is_err());
-    }
-
-    #[test]
-    fn parse_cli_errors_on_unknown_argument() {
-        let args = vec!["taskonpurpose".to_string(), "--unexpected".to_string()];
-        let err = parse_cli(&args).expect_err("Should fail for unknown argument");
-        assert!(err.contains("Unknown argument"));
-    }
-}
-
 /// Prints the OnPurpose hourglass logo to stdout as a sixel-encoded image.
 ///
 /// This function loads the embedded PNG logo, resizes it to fit within terminal dimensions,
@@ -464,5 +439,30 @@ fn resize_to_fit(img: image::RgbaImage, max_width: u32, max_height: u32) -> imag
         let new_w = (w as f32 * scale).round().max(1.0) as u32;
         let new_h = (h as f32 * scale).round().max(1.0) as u32;
         imageops::resize(&img, new_w, new_h, FilterType::Lanczos3)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_cli;
+
+    #[test]
+    fn parse_cli_rejects_single_dash_username_flag() {
+        let args = vec![
+            "taskonpurpose".to_string(),
+            "-username".to_string(),
+            "nash".to_string(),
+        ];
+
+        // This should be rejected; the correct flag is `--username` or `-u`.
+        // (Added as a regression test; it should fail before we implement the behavior.)
+        assert!(parse_cli(&args).is_err());
+    }
+
+    #[test]
+    fn parse_cli_errors_on_unknown_argument() {
+        let args = vec!["taskonpurpose".to_string(), "--unexpected".to_string()];
+        let err = parse_cli(&args).expect_err("Should fail for unknown argument");
+        assert!(err.contains("Unknown argument"));
     }
 }

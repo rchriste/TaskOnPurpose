@@ -11,6 +11,12 @@ pub(crate) struct SurrealMode {
     pub(crate) parent: Option<RecordId>,
 }
 
+impl From<SurrealMode> for Option<RecordId> {
+    fn from(value: SurrealMode) -> Self {
+        value.id
+    }
+}
+
 impl From<NewMode> for SurrealMode {
     fn from(new_mode: NewMode) -> Self {
         SurrealMode {
