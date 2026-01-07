@@ -9,6 +9,12 @@ pub(crate) struct SurrealCurrentMode {
     pub(crate) importance_in_scope: Vec<SurrealSelectedSingleMode>,
 }
 
+impl From<SurrealCurrentMode> for Option<RecordId> {
+    fn from(value: SurrealCurrentMode) -> Self {
+        value.id
+    }
+}
+
 impl SurrealCurrentMode {
     pub(crate) const TABLE_NAME: &'static str = "current_modes";
 }
