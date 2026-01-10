@@ -327,7 +327,9 @@ pub(crate) async fn present_review_item_menu(
             }
             ReviewItemMenuChoices::UpdateUrgencyPlan { current_item } => {
                 let now = Utc::now();
-                let urgency_plan = prompt_for_urgency_plan(&now, send_to_data_storage_layer).await;
+                let urgency_plan =
+                    prompt_for_urgency_plan(Some(current_item), &now, send_to_data_storage_layer)
+                        .await;
                 send_to_data_storage_layer
                     .send(DataLayerCommands::UpdateUrgencyPlan(
                         current_item.get_surreal_record_id().clone(),
