@@ -4,7 +4,6 @@ use lazy_static::lazy_static;
 use chrono::{DateTime, Datelike, Duration, Local, NaiveTime, TimeZone};
 use crossterm::terminal;
 use regex::{Regex, RegexBuilder};
-use std::borrow::Cow;
 
 pub(crate) mod back_menu;
 pub(crate) mod do_now_list_menu;
@@ -34,9 +33,13 @@ pub(crate) fn default_select_page_size() -> usize {
 fn parse_exact_or_relative_datetime_help_string() -> &'static str {
     concat!(
         "Enter an exact time or a time relative to now. Examples:\n",
-        "\"3:00pm\" or \"3pm\", for today at 3:00pm or type \"Tomorrow 3pm\" or \"Next day 3pm\" for tomorrow at 3:00pm\n",
-        "\"Mon 3:15pm\" for Monday of this week at 3pm. Or you can say \"next Mon 5pm\" for next week's Monday\n",
-        "You can also say \"last Mon 5pm\" for last week's Monday\n",
+        "\"3:00pm\" or \"3pm\", for today at 3:00pm\n",
+        "\"Today 3pm\" or \"Day 3pm\" for today at 3:00pm\n",
+        "\"Tomorrow 3pm\", \"Next day 3pm\", or \"Next today 3pm\" for tomorrow at 3:00pm\n",
+        "\"Next next day 3pm\" for the day after tomorrow at 3:00pm\n",
+        "\"Mon 3:15pm\" for Monday of this week at 3:15pm\n",
+        "\"next Mon 5pm\" for next week's Monday, and \"next next Mon 5pm\" for the Monday after that\n",
+        "You can also say \"last Mon 5pm\" or even \"last last Mon 5pm\"\n",
         "Full dates also work like \"1/15/2025 4:15pm\" or \"2/13/2025 4pm\"\n",
         "Relative times also work like \"30m\" or \"30min\" for in thirty minutes from now, or\n",
         "  \"1h\", \"1hour\", for in an hour, or \"1d\", \"1day\", for in a day, or\n",
@@ -44,28 +47,7 @@ fn parse_exact_or_relative_datetime_help_string() -> &'static str {
     )
 }
 
-fn normalize_next_day_to_tomorrow(input: &str) -> Cow<'_, str> {
-    // "next" already means "add a week" in the weekday parser (e.g., "next Mon"),
-    // so treating "next day" as "tomorrow" here keeps that mental model intact
-    // while still offering the convenience alias without changing other "next"
-    // semantics. We normalize up front to reuse the existing "Tomorrow" branch.
-    lazy_static! {
-        static ref NEXT_DAY_RE: Regex = RegexBuilder::new(r"^\s*next\s+day\b(.*)$")
-            .case_insensitive(true)
-            .build()
-            .expect("Regex is valid");
-    }
-    if let Some(captures) = NEXT_DAY_RE.captures(input) {
-        let suffix = captures.get(1).map(|m| m.as_str()).unwrap_or("");
-        Cow::Owned(format!("Tomorrow{}", suffix))
-    } else {
-        Cow::Borrowed(input)
-    }
-}
-
 fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
-    let normalized_input = normalize_next_day_to_tomorrow(input);
-    let input = normalized_input.as_ref();
     lazy_static! {
         static ref relative_parser: CustomDurationParser<'static> = CustomDurationParser::builder()
             .allow_time_unit_delimiter()
@@ -105,10 +87,12 @@ fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
             Ok(exact_start) => Some(exact_start.into()),
             Err(_e) => {
                 lazy_static! {
-                    static ref RE: Regex = RegexBuilder::new(r"^\s*(last\s+|next\s+)?(Monday|Mon|Tuesday|Tue|Wed|Wednesday|Thu|Thur|Thurs|Thursday|Fri|Friday|Sat|Saturday|Sun|Sunday|Tomorrow)\s*(([0-9]{1,2})(:[0-9]{2}(:[0-9]{2})?)?\s*(am|pm)?)?\s*$").case_insensitive(true).build().expect("Regex is valid");
+                    // Allow repeating modifiers like "next next day" or "last last Mon".
+                    static ref RE: Regex = RegexBuilder::new(r"^\s*((?:(?:last|next)\s+)*)?(Monday|Mon|Tuesday|Tue|Wed|Wednesday|Thu|Thur|Thurs|Thursday|Fri|Friday|Sat|Saturday|Sun|Sunday|Tomorrow|Day|Today)\s*(([0-9]{1,2})(:[0-9]{2}(:[0-9]{2})?)?\s*(am|pm)?)?\s*$").case_insensitive(true).build().expect("Regex is valid");
                 }
                 if RE.is_match(input) {
                     let captures = RE.captures(input).unwrap();
+                    let modifier_prefix = captures.get(1).map(|m| m.as_str()).unwrap_or("");
                     let day_of_the_week = captures
                         .get(2)
                         .expect("is_match is true and this is required")
@@ -147,6 +131,10 @@ fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
                             .case_insensitive(true)
                             .build()
                             .expect("Regex is valid");
+                        static ref TodayRE: Regex = RegexBuilder::new(r"^\s*(Day|Today)")
+                            .case_insensitive(true)
+                            .build()
+                            .expect("Regex is valid");
                     }
                     let now = Local::now();
                     let days_since_sunday_plus_one: i64 = now.weekday().number_from_sunday().into();
@@ -167,35 +155,38 @@ fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
                         now.date_naive() - Duration::days(days_since_sunday) + Duration::days(0)
                     } else if TomorrowRE.is_match(day_of_the_week) {
                         now.date_naive() + Duration::days(1)
+                    } else if TodayRE.is_match(day_of_the_week) {
+                        now.date_naive()
                     } else {
                         panic!(
                             "This should not be possible as the regex should only match if it is one of the days of the week"
                         )
                     };
-                    let date = if captures.get(1).is_some() {
-                        lazy_static! {
-                            static ref LastRE: Regex = RegexBuilder::new(r"^\s*(last)")
-                                .case_insensitive(true)
-                                .build()
-                                .expect("Regex is valid");
-                            static ref NextRE: Regex = RegexBuilder::new(r"^\s*(next)")
-                                .case_insensitive(true)
-                                .build()
-                                .expect("Regex is valid");
-                        }
-                        let last_or_next = captures.get(1).unwrap().as_str();
-                        if NextRE.is_match(last_or_next) {
-                            //If they type in next then add a week to the date
-                            date + Duration::days(7)
-                        } else if LastRE.is_match(last_or_next) {
-                            //If they type in last then subtract a week from the date
-                            date - Duration::days(7)
-                        } else {
-                            panic!("This should not be possible as the regex should not match")
-                        }
-                    } else {
-                        date
-                    };
+
+                    // Treat "next"/"last" as modifiers on the base unit.
+                    // - weekdays: each modifier step is +/- 1 week from the current-week anchor
+                    // - day/today/tomorrow: each modifier step is +/- 1 day
+                    let modifier_steps: i64 = modifier_prefix
+                        .split_whitespace()
+                        .map(|w| w.to_ascii_lowercase())
+                        .map(|w| match w.as_str() {
+                            "next" => 1,
+                            "last" => -1,
+                            _ => 0,
+                        })
+                        .sum();
+
+                    let is_weekday = MondayRE.is_match(day_of_the_week)
+                        || TuesdayRE.is_match(day_of_the_week)
+                        || WednesdayRE.is_match(day_of_the_week)
+                        || ThursdayRE.is_match(day_of_the_week)
+                        || FridayRE.is_match(day_of_the_week)
+                        || SaturdayRE.is_match(day_of_the_week)
+                        || SundayRE.is_match(day_of_the_week);
+
+                    let delta_days = if is_weekday { 7 } else { 1 };
+                    let date = date + Duration::days(modifier_steps * delta_days);
+
                     if captures.get(3).is_none() {
                         Some(
                             Local
@@ -651,6 +642,18 @@ mod tests {
         );
 
         assert_eq!(
+            parse_exact_or_relative_datetime("next next Mon"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &(next_monday + Duration::days(7))
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
             parse_exact_or_relative_datetime("Next Monday"),
             Some(
                 Local
@@ -1021,6 +1024,18 @@ mod tests {
                 Local
                     .from_local_datetime(
                         &last_monday.and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("last last Mon"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &(last_monday - Duration::days(7))
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
                     )
                     .unwrap()
             )
@@ -1521,6 +1536,167 @@ mod tests {
         );
 
         assert_eq!(
+            parse_exact_or_relative_datetime("next next day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(2))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("next next day 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(2))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("last day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("last last day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(2))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("last last day 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(2))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        // "Day" is the base unit; "next Day" is tomorrow.
+        assert_eq!(
+            parse_exact_or_relative_datetime("Day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("next Day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        // "Today" is an alias for "Day"; "next today" is tomorrow.
+        assert_eq!(
+            parse_exact_or_relative_datetime("Today"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("Today 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("next today"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("next today 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
             parse_exact_or_relative_datetime("Tomorrow 3:00pm"),
             Some(
                 Local
@@ -1575,6 +1751,89 @@ mod tests {
                             .checked_add_days(Days::new(1))
                             .expect("Test failure")
                             .and_time(NaiveTime::from_hms_opt(19, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_exact_or_relative_datetime_last_day_patterns() {
+        // Test "last day" returns yesterday
+        assert_eq!(
+            parse_exact_or_relative_datetime("last day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        // Test "last last day" returns the day before yesterday
+        assert_eq!(
+            parse_exact_or_relative_datetime("last last day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(2))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        // Test "last day" with time
+        assert_eq!(
+            parse_exact_or_relative_datetime("last day 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        // Test "last today" (another way to say yesterday)
+        assert_eq!(
+            parse_exact_or_relative_datetime("last today"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        // Test case-insensitive variants
+        assert_eq!(
+            parse_exact_or_relative_datetime("LAST DAY"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
                     )
                     .unwrap()
             )
