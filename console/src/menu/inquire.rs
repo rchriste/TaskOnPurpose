@@ -1701,6 +1701,89 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_exact_or_relative_datetime_last_day_patterns() {
+        // Test "last day" returns yesterday
+        assert_eq!(
+            parse_exact_or_relative_datetime("last day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        // Test "last last day" returns the day before yesterday
+        assert_eq!(
+            parse_exact_or_relative_datetime("last last day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(2))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        // Test "last day" with time
+        assert_eq!(
+            parse_exact_or_relative_datetime("last day 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        // Test "last today" (another way to say yesterday)
+        assert_eq!(
+            parse_exact_or_relative_datetime("last today"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        // Test case-insensitive variants
+        assert_eq!(
+            parse_exact_or_relative_datetime("LAST DAY"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+    }
+
+    #[test]
     fn test_parse_exact_or_relative_datetime_when_the_times_are_relative() {
         let input_and_expected = vec![
             ("30s", Duration::seconds(30)),
