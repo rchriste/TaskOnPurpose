@@ -1030,6 +1030,18 @@ mod tests {
         );
 
         assert_eq!(
+            parse_exact_or_relative_datetime("last last Mon"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &(last_monday - Duration::days(7))
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
             parse_exact_or_relative_datetime("last Monday"),
             Some(
                 Local
@@ -1546,6 +1558,51 @@ mod tests {
                         &Local::now()
                             .date_naive()
                             .checked_add_days(Days::new(2))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("last day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("last last day"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(2))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("last last day 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(2))
                             .expect("Test failure")
                             .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
                     )
