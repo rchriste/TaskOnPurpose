@@ -1,4 +1,4 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use fundu::{CustomDurationParser, CustomTimeUnit, SaturatingInto, TimeUnit};
 use lazy_static::lazy_static;
 use tokio::sync::mpsc::Sender;
@@ -14,7 +14,7 @@ use crate::{
     },
     display::{
         display_dependencies_with_item_node::DisplayDependenciesWithItemNode,
-        display_item_node::DisplayFormat,
+        display_duration_one_unit::DisplayDurationOneUnit, display_item_node::DisplayFormat,
     },
     menu::inquire::{
         default_select_page_size,
@@ -26,7 +26,10 @@ use crate::{
     new_event::{NewEvent, NewEventBuilder},
     node::{
         Filter, Urgency,
-        item_status::{DependencyWithItemNode, ItemStatus},
+        item_status::{
+            DependencyWithItemNode, ItemStatus, ItemsInScopeWithItemNode, TriggerWithItemNode,
+            UrgencyPlanWithItemNode,
+        },
     },
 };
 use inquire::{InquireError, Select, Text};
@@ -35,6 +38,90 @@ use std::{
     fmt::{Display, Formatter},
     iter::once,
 };
+
+fn format_datetime_for_prompt(utc: DateTime<Utc>) -> String {
+    utc.with_timezone(&Local)
+        .format("%m/%d/%Y %I:%M%p")
+        .to_string()
+}
+
+fn surreal_urgency_to_cursor(urgency: &SurrealUrgency) -> usize {
+    match urgency {
+        SurrealUrgency::MoreUrgentThanAnythingIncludingScheduled => 0,
+        SurrealUrgency::ScheduledAnyMode(_) => 1,
+        SurrealUrgency::MoreUrgentThanMode => 2,
+        SurrealUrgency::InTheModeScheduled(_) => 3,
+        SurrealUrgency::InTheModeDefinitelyUrgent => 4,
+        SurrealUrgency::InTheModeMaybeUrgent => 5,
+        SurrealUrgency::InTheModeByImportance => 6,
+    }
+}
+
+fn trigger_type_to_cursor(trigger: &TriggerWithItemNode<'_>) -> usize {
+    match trigger {
+        TriggerWithItemNode::WallClockDateTime { .. } => 0,
+        TriggerWithItemNode::LoggedInvocationCount { .. } => 1,
+        TriggerWithItemNode::LoggedAmountOfTime { .. } => 2,
+    }
+}
+
+fn items_in_scope_with_item_node_to_surreal(
+    items: &ItemsInScopeWithItemNode<'_>,
+) -> SurrealItemsInScope {
+    match items {
+        ItemsInScopeWithItemNode::All => SurrealItemsInScope::All,
+        ItemsInScopeWithItemNode::Include(items) => SurrealItemsInScope::Include(
+            items
+                .iter()
+                .map(|x| x.get_surreal_record_id().clone())
+                .collect(),
+        ),
+        ItemsInScopeWithItemNode::Exclude(items) => SurrealItemsInScope::Exclude(
+            items
+                .iter()
+                .map(|x| x.get_surreal_record_id().clone())
+                .collect(),
+        ),
+    }
+}
+
+fn describe_items_in_scope(items: &ItemsInScopeWithItemNode<'_>) -> String {
+    const MAX_ITEMS: usize = 5;
+    match items {
+        ItemsInScopeWithItemNode::All => "Any/all items".to_string(),
+        ItemsInScopeWithItemNode::Include(items) => {
+            let shown = items
+                .iter()
+                .take(MAX_ITEMS)
+                .map(|x| x.get_summary())
+                .collect::<Vec<_>>();
+            let extra = items.len().saturating_sub(MAX_ITEMS);
+            if extra > 0 {
+                format!("Include: {} (+{} more)", shown.join("; "), extra)
+            } else {
+                format!("Include: {}", shown.join("; "))
+            }
+        }
+        ItemsInScopeWithItemNode::Exclude(items) => {
+            let shown = items
+                .iter()
+                .take(MAX_ITEMS)
+                .map(|x| x.get_summary())
+                .collect::<Vec<_>>();
+            let extra = items.len().saturating_sub(MAX_ITEMS);
+            if extra > 0 {
+                format!("Exclude: {} (+{} more)", shown.join("; "), extra)
+            } else {
+                format!("Exclude: {}", shown.join("; "))
+            }
+        }
+    }
+}
+
+fn duration_to_default_prompt(duration: &std::time::Duration) -> String {
+    // Prefer the existing human-friendly format used elsewhere.
+    format!("{}", DisplayDurationOneUnit::new(duration))
+}
 
 enum UrgencyPlanSelection {
     StaysTheSame,
@@ -84,7 +171,8 @@ pub(crate) async fn prompt_for_dependencies_and_urgency_plan(
     let ready =
         prompt_for_dependencies(currently_selected, base_data, send_to_data_storage_layer).await;
     let now = Utc::now();
-    let urgency_plan = prompt_for_urgency_plan(&now, send_to_data_storage_layer).await;
+    let urgency_plan =
+        prompt_for_urgency_plan(currently_selected, &now, send_to_data_storage_layer).await;
     (ready.unwrap(), urgency_plan)
 }
 
@@ -312,11 +400,26 @@ pub(crate) async fn prompt_for_dependencies(
 }
 
 pub(crate) async fn prompt_for_urgency_plan(
+    currently_selected: Option<&ItemStatus<'_>>,
     now: &DateTime<Utc>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> SurrealUrgencyPlan {
+    let (existing_initial, existing_later, existing_triggers, existing_is_escalating) =
+        match currently_selected.and_then(|x| x.get_urgency_plan().as_ref()) {
+            Some(UrgencyPlanWithItemNode::WillEscalate {
+                initial,
+                triggers,
+                later,
+            }) => (Some(initial), Some(later), Some(triggers.as_slice()), true),
+            Some(UrgencyPlanWithItemNode::StaysTheSame(initial)) => {
+                (Some(initial), None, None, false)
+            }
+            None => (None, None, None, false),
+        };
+
     println!("Initial Urgency");
-    let initial_urgency = prompt_for_urgency();
+    let initial_urgency = prompt_for_urgency(existing_initial, 6);
+    let initial_cursor = surreal_urgency_to_cursor(&initial_urgency);
 
     let urgency_plan = Select::new(
         "Does the urgency escalate?|",
@@ -325,6 +428,7 @@ pub(crate) async fn prompt_for_urgency_plan(
             UrgencyPlanSelection::WillEscalate,
         ],
     )
+    .with_starting_cursor(if existing_is_escalating { 1 } else { 0 })
     .with_page_size(default_select_page_size())
     .prompt()
     .unwrap();
@@ -332,10 +436,12 @@ pub(crate) async fn prompt_for_urgency_plan(
     match urgency_plan {
         UrgencyPlanSelection::StaysTheSame => SurrealUrgencyPlan::StaysTheSame(initial_urgency),
         UrgencyPlanSelection::WillEscalate => {
-            let triggers = prompt_for_triggers(now, send_to_data_storage_layer).await;
+            let triggers =
+                prompt_for_triggers(existing_triggers, now, send_to_data_storage_layer).await;
 
             println!("Later Urgency");
-            let later_urgency = prompt_for_urgency();
+            let later_fallback_cursor = initial_cursor.saturating_sub(1);
+            let later_urgency = prompt_for_urgency(existing_later, later_fallback_cursor);
 
             SurrealUrgencyPlan::WillEscalate {
                 initial: initial_urgency,
@@ -381,17 +487,25 @@ impl Display for AddAnotherTrigger {
 }
 
 pub(crate) async fn prompt_for_triggers(
+    existing_triggers: Option<&[TriggerWithItemNode<'_>]>,
     now: &DateTime<Utc>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Vec<SurrealTrigger> {
     let mut result = Vec::default();
+    let mut existing_index: usize = 0;
     loop {
-        let trigger = prompt_for_trigger(now, send_to_data_storage_layer).await;
+        let existing_trigger = existing_triggers.and_then(|x| x.get(existing_index));
+        let trigger = prompt_for_trigger(existing_trigger, now, send_to_data_storage_layer).await;
         result.push(trigger);
+        existing_index += 1;
         let more = Select::new(
             "Is there anything else that should also trigger?",
             vec![AddAnotherTrigger::AllDone, AddAnotherTrigger::AddAnother],
         )
+        .with_starting_cursor(match existing_triggers {
+            Some(existing) if existing_index < existing.len() => 1,
+            _ => 0,
+        })
         .with_page_size(default_select_page_size())
         .prompt()
         .unwrap();
@@ -405,6 +519,7 @@ pub(crate) async fn prompt_for_triggers(
 }
 
 async fn prompt_for_trigger(
+    existing_trigger: Option<&TriggerWithItemNode<'_>>,
     now: &DateTime<Utc>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> SurrealTrigger {
@@ -416,23 +531,35 @@ async fn prompt_for_trigger(
             TriggerType::LoggedAmountOfTimeSpent,
         ],
     )
+    .with_starting_cursor(match existing_trigger {
+        Some(t) => trigger_type_to_cursor(t),
+        None => 0,
+    })
     .with_page_size(default_select_page_size())
     .prompt()
     .unwrap();
 
     match trigger_type {
         TriggerType::WallClockDateTime => loop {
-            let exact_start =
-                match Text::new("Enter when you want to trigger (\"?\" for help)\n|").prompt() {
-                    Ok(exact_start) => exact_start,
-                    Err(InquireError::OperationCanceled) => {
-                        todo!("Go back to the previous menu");
-                    }
-                    Err(InquireError::OperationInterrupted) => {
-                        todo!("Change return type of this function so this can be returned")
-                    }
-                    Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
-                };
+            let existing_when = existing_trigger.and_then(|t| match t {
+                TriggerWithItemNode::WallClockDateTime { after, .. } => Some(*after),
+                _ => None,
+            });
+            let existing_when = existing_when.map(format_datetime_for_prompt);
+            let mut when_prompt = Text::new("Enter when you want to trigger (\"?\" for help)\n|");
+            if let Some(existing_when) = &existing_when {
+                when_prompt = when_prompt.with_initial_value(existing_when);
+            }
+            let exact_start = match when_prompt.prompt() {
+                Ok(exact_start) => exact_start,
+                Err(InquireError::OperationCanceled) => {
+                    todo!("Go back to the previous menu");
+                }
+                Err(InquireError::OperationInterrupted) => {
+                    todo!("Change return type of this function so this can be returned")
+                }
+                Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+            };
             let exact_start: DateTime<Utc> = match parse_exact_or_relative_datetime(&exact_start) {
                 Some(exact_start) => exact_start.into(),
                 None => {
@@ -445,14 +572,34 @@ async fn prompt_for_trigger(
             break SurrealTrigger::WallClockDateTime(exact_start.into());
         },
         TriggerType::LoggedInvocationCount => {
-            let count_needed = Text::new("Enter the count needed").prompt().unwrap();
+            let existing_count = existing_trigger.and_then(|t| match t {
+                TriggerWithItemNode::LoggedInvocationCount { count_needed, .. } => {
+                    Some(count_needed.to_string())
+                }
+                _ => None,
+            });
+            let mut count_prompt = Text::new("Enter the count needed");
+            if let Some(existing_count) = &existing_count {
+                count_prompt = count_prompt.with_initial_value(existing_count);
+            }
+            let count_needed = count_prompt.prompt().unwrap();
             let count_needed = match count_needed.parse::<u32>() {
                 Ok(count_needed) => count_needed,
                 Err(e) => {
                     todo!("Error: {:?}", e)
                 }
             };
-            let items_in_scope = prompt_for_items_in_scope(send_to_data_storage_layer).await;
+            let existing_items_in_scope = existing_trigger.and_then(|t| match t {
+                TriggerWithItemNode::LoggedInvocationCount { items_in_scope, .. } => {
+                    Some(items_in_scope)
+                }
+                _ => None,
+            });
+            let items_in_scope = prompt_for_items_in_scope_with_existing(
+                existing_items_in_scope,
+                send_to_data_storage_layer,
+            )
+            .await;
 
             SurrealTrigger::LoggedInvocationCount {
                 starting: (*now).into(),
@@ -480,8 +627,24 @@ async fn prompt_for_trigger(
                         .build();
             }
 
+            let existing_duration = existing_trigger.and_then(|t| match t {
+                TriggerWithItemNode::LoggedAmountOfTime {
+                    duration_needed, ..
+                } => Some(duration_needed),
+                _ => None,
+            });
+            let existing_duration_text = existing_duration.map(duration_to_default_prompt);
+
             let amount_of_time = loop {
-                let amount_of_time = Text::new("Enter the amount of time (Examples:\"30sec\", \"30s\", \"30min\", \"30m\", \"2hours\", \"2h\")\n|").prompt().unwrap();
+                let mut amount_of_time_prompt = Text::new(
+                    "Enter the amount of time (Examples:\"30sec\", \"30s\", \"30min\", \"30m\", \"2hours\", \"2h\")\n|",
+                );
+                if let Some(existing_duration_text) = &existing_duration_text {
+                    amount_of_time_prompt =
+                        amount_of_time_prompt.with_initial_value(existing_duration_text);
+                }
+                let amount_of_time = amount_of_time_prompt.prompt().unwrap();
+
                 match relative_parser.parse(&amount_of_time) {
                     Ok(amount_of_time) => break amount_of_time.saturating_into(),
                     Err(_) => {
@@ -491,7 +654,18 @@ async fn prompt_for_trigger(
                     }
                 }
             };
-            let items_in_scope = prompt_for_items_in_scope(send_to_data_storage_layer).await;
+
+            let existing_items_in_scope = existing_trigger.and_then(|t| match t {
+                TriggerWithItemNode::LoggedAmountOfTime { items_in_scope, .. } => {
+                    Some(items_in_scope)
+                }
+                _ => None,
+            });
+            let items_in_scope = prompt_for_items_in_scope_with_existing(
+                existing_items_in_scope,
+                send_to_data_storage_layer,
+            )
+            .await;
 
             SurrealTrigger::LoggedAmountOfTime {
                 starting: (*now).into(),
@@ -506,6 +680,49 @@ enum ItemInScopeSelection {
     All,
     Include,
     Exclude,
+}
+
+enum KeepOrChange {
+    Keep,
+    Change,
+}
+
+impl Display for KeepOrChange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            KeepOrChange::Keep => write!(f, "Keep as-is"),
+            KeepOrChange::Change => write!(f, "Change"),
+        }
+    }
+}
+
+async fn prompt_for_items_in_scope_with_existing(
+    existing: Option<&ItemsInScopeWithItemNode<'_>>,
+    send_to_data_storage_layer: &Sender<DataLayerCommands>,
+) -> SurrealItemsInScope {
+    if let Some(existing) = existing {
+        println!(
+            "Current items in scope: {}",
+            describe_items_in_scope(existing)
+        );
+        let selection = Select::new(
+            "Do you want to keep the items-in-scope setting?",
+            vec![KeepOrChange::Keep, KeepOrChange::Change],
+        )
+        .with_starting_cursor(0)
+        .with_page_size(default_select_page_size())
+        .prompt()
+        .unwrap();
+
+        match selection {
+            KeepOrChange::Keep => return items_in_scope_with_item_node_to_surreal(existing),
+            KeepOrChange::Change => {
+                // fall through into the existing flow
+            }
+        }
+    }
+
+    prompt_for_items_in_scope(send_to_data_storage_layer).await
 }
 
 impl Display for ItemInScopeSelection {
@@ -636,7 +853,10 @@ impl Display for Urgency {
     }
 }
 
-fn prompt_for_urgency() -> SurrealUrgency {
+fn prompt_for_urgency(
+    default_urgency: Option<&SurrealUrgency>,
+    fallback_cursor: usize,
+) -> SurrealUrgency {
     let urgency = Select::new(
         "Select immediate urgency|",
         vec![
@@ -649,7 +869,11 @@ fn prompt_for_urgency() -> SurrealUrgency {
             Urgency::InTheModeByImportance,
         ],
     )
-    .with_starting_cursor(6)
+    .with_starting_cursor(
+        default_urgency
+            .map(surreal_urgency_to_cursor)
+            .unwrap_or(fallback_cursor),
+    )
     .with_page_size(default_select_page_size())
     .prompt()
     .unwrap();
@@ -658,11 +882,19 @@ fn prompt_for_urgency() -> SurrealUrgency {
             SurrealUrgency::MoreUrgentThanAnythingIncludingScheduled
         }
         Urgency::ScheduledAnyMode => {
-            SurrealUrgency::ScheduledAnyMode(prompt_to_schedule().unwrap().unwrap())
+            let existing = match default_urgency {
+                Some(SurrealUrgency::ScheduledAnyMode(existing)) => Some(existing),
+                _ => None,
+            };
+            SurrealUrgency::ScheduledAnyMode(prompt_to_schedule(existing).unwrap().unwrap())
         }
         Urgency::MoreUrgentThanMode => SurrealUrgency::MoreUrgentThanMode,
         Urgency::InTheModeScheduled => {
-            SurrealUrgency::InTheModeScheduled(prompt_to_schedule().unwrap().unwrap())
+            let existing = match default_urgency {
+                Some(SurrealUrgency::InTheModeScheduled(existing)) => Some(existing),
+                _ => None,
+            };
+            SurrealUrgency::InTheModeScheduled(prompt_to_schedule(existing).unwrap().unwrap())
         }
         Urgency::InTheModeDefinitelyUrgent => SurrealUrgency::InTheModeDefinitelyUrgent,
         Urgency::InTheModeMaybeUrgent => SurrealUrgency::InTheModeMaybeUrgent,
@@ -689,17 +921,31 @@ pub(crate) enum StartWhen {
     TimeRange(DateTime<Utc>, DateTime<Utc>),
 }
 
-fn prompt_to_schedule() -> Result<Option<SurrealScheduled>, ()> {
+fn prompt_to_schedule(existing: Option<&SurrealScheduled>) -> Result<Option<SurrealScheduled>, ()> {
     let start_when = vec![StartWhenOption::ExactTime, StartWhenOption::TimeRange];
     let start_when = Select::new("When do you want to start this item?", start_when)
+        .with_starting_cursor(match existing {
+            Some(SurrealScheduled::Exact { .. }) => 0,
+            Some(SurrealScheduled::Range { .. }) => 1,
+            None => 0,
+        })
         .with_page_size(default_select_page_size())
         .prompt();
     let start_when = match start_when {
         Ok(StartWhenOption::ExactTime) => loop {
-            let exact_start =
-                Text::new("Enter the exact time you want to start this item (\"?\" for help)\n|")
-                    .prompt()
-                    .unwrap();
+            let existing_start = match existing {
+                Some(SurrealScheduled::Exact { start, .. }) => {
+                    let start: DateTime<Utc> = start.clone().into();
+                    Some(format_datetime_for_prompt(start))
+                }
+                _ => None,
+            };
+            let mut exact_prompt =
+                Text::new("Enter the exact time you want to start this item (\"?\" for help)\n|");
+            if let Some(existing_start) = &existing_start {
+                exact_prompt = exact_prompt.with_initial_value(existing_start);
+            }
+            let exact_start = exact_prompt.prompt().unwrap();
 
             let exact_start = match parse_exact_or_relative_datetime(&exact_start) {
                 Some(exact_start) => exact_start,
@@ -714,31 +960,52 @@ fn prompt_to_schedule() -> Result<Option<SurrealScheduled>, ()> {
         },
         Ok(StartWhenOption::TimeRange) => {
             let range_start = loop {
-                let range_start =
-                    match Text::new("Enter the start of the range (\"?\" for help)\n|").prompt() {
-                        Ok(range_start) => match parse_exact_or_relative_datetime(&range_start) {
-                            Some(range_start) => range_start,
-                            None => {
-                                println!("Invalid date or duration, please try again");
-                                println!();
-                                println!("{}", parse_exact_or_relative_datetime_help_string());
-                                continue;
-                            }
-                        },
-                        Err(InquireError::OperationCanceled) => {
-                            todo!();
+                let existing_start = match existing {
+                    Some(SurrealScheduled::Range { start_range, .. }) => {
+                        let start: DateTime<Utc> = start_range.0.clone().into();
+                        Some(format_datetime_for_prompt(start))
+                    }
+                    _ => None,
+                };
+                let mut range_start_prompt =
+                    Text::new("Enter the start of the range (\"?\" for help)\n|");
+                if let Some(existing_start) = &existing_start {
+                    range_start_prompt = range_start_prompt.with_initial_value(existing_start);
+                }
+                let range_start = match range_start_prompt.prompt() {
+                    Ok(range_start) => match parse_exact_or_relative_datetime(&range_start) {
+                        Some(range_start) => range_start,
+                        None => {
+                            println!("Invalid date or duration, please try again");
+                            println!();
+                            println!("{}", parse_exact_or_relative_datetime_help_string());
+                            continue;
                         }
-                        Err(InquireError::OperationInterrupted) => return Err(()),
-                        Err(err) => {
-                            panic!("Unexpected error, try restarting the terminal: {}", err)
-                        }
-                    };
+                    },
+                    Err(InquireError::OperationCanceled) => {
+                        todo!();
+                    }
+                    Err(InquireError::OperationInterrupted) => return Err(()),
+                    Err(err) => {
+                        panic!("Unexpected error, try restarting the terminal: {}", err)
+                    }
+                };
                 break range_start.into();
             };
             let range_end = loop {
-                let range_end = match Text::new("Enter the end of the range (\"?\" for help)\n|")
-                    .prompt()
-                {
+                let existing_end = match existing {
+                    Some(SurrealScheduled::Range { start_range, .. }) => {
+                        let end: DateTime<Utc> = start_range.1.clone().into();
+                        Some(format_datetime_for_prompt(end))
+                    }
+                    _ => None,
+                };
+                let mut range_end_prompt =
+                    Text::new("Enter the end of the range (\"?\" for help)\n|");
+                if let Some(existing_end) = &existing_end {
+                    range_end_prompt = range_end_prompt.with_initial_value(existing_end);
+                }
+                let range_end = match range_end_prompt.prompt() {
                     Ok(range_end) => match parse_exact_or_relative_datetime(&range_end) {
                         Some(range_end) => range_end,
                         None => {

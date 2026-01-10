@@ -259,7 +259,7 @@ pub(crate) async fn priority_wizard_loop<'a>(
             // User selected items this is higher priority than.
             println!("How long should this priority comparison be in effect?");
             let now = Utc::now();
-            let in_effect_until = prompt_for_triggers(&now, send_to_data_storage_layer).await;
+            let in_effect_until = prompt_for_triggers(None, &now, send_to_data_storage_layer).await;
 
             // Send a message for each item that this is higher priority than
             // and mark those items as "selected" (eliminated from future consideration)
@@ -297,7 +297,8 @@ pub(crate) async fn priority_wizard_loop<'a>(
             if !lower_priority_than.is_empty() {
                 println!("How long should this priority comparison be in effect?");
                 let now = Utc::now();
-                let in_effect_until = prompt_for_triggers(&now, send_to_data_storage_layer).await;
+                let in_effect_until =
+                    prompt_for_triggers(None, &now, send_to_data_storage_layer).await;
 
                 // This item is LOWER priority than each item the user selected above.
                 // Record that this item has the lowest priority compared to those selected items.

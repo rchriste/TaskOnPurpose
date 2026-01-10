@@ -239,7 +239,7 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
 
     println!("How long should this be in effect?");
     let now = Utc::now();
-    let in_effect_until = prompt_for_triggers(&now, send_to_data_storage_layer).await;
+    let in_effect_until = prompt_for_triggers(None, &now, send_to_data_storage_layer).await;
 
     send_to_data_storage_layer
         .send(DataLayerCommands::DeclareInTheMomentPriority {
