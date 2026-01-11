@@ -679,10 +679,7 @@ async fn prompt_for_trigger(
                             todo!("Change return type of this function so this can be returned")
                         }
                         Err(err) => {
-                            panic!(
-                                "Unexpected error, try restarting the terminal: {}",
-                                err
-                            )
+                            panic!("Unexpected error, try restarting the terminal: {}", err)
                         }
                     };
 
