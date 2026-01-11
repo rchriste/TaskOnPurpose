@@ -202,6 +202,41 @@ pub(crate) async fn present_normal_do_now_list_menu(
             finish_checkpoint - calculated_data_checkpoint
         );
     }
+    // If the user previously said they're currently working on an item, resume directly into
+    // that single-item view instead of showing the main list.
+    if let Some(working_on) = do_now_list.get_base_data().get_surreal_working_on() {
+        let resumed = do_now_list
+            .get_all_items_status()
+            .iter()
+            .find_map(|(id, status)| {
+                if *id == &working_on.item {
+                    Some(status)
+                } else {
+                    None
+                }
+            });
+
+        if let Some(item_status) = resumed {
+            if item_status.is_finished() {
+                send_to_data_storage_layer
+                    .send(DataLayerCommands::ClearWorkingOn)
+                    .await
+                    .unwrap();
+            } else {
+                let mut why_in_scope = HashSet::default();
+                why_in_scope.insert(WhyInScope::MenuNavigation);
+                return Box::pin(present_do_now_list_item_selected(
+                    item_status,
+                    &why_in_scope,
+                    Utc::now(),
+                    &do_now_list,
+                    send_to_data_storage_layer,
+                ))
+                .await;
+            }
+        }
+    }
+
     present_upcoming(&do_now_list);
     present_do_now_list_menu(&do_now_list, now, send_to_data_storage_layer).await
 }

@@ -12,6 +12,7 @@ use super::{
     data_layer_commands::DataLayerCommands, surreal_current_mode::SurrealCurrentMode,
     surreal_event::SurrealEvent, surreal_in_the_moment_priority::SurrealInTheMomentPriority,
     surreal_item::SurrealItem, surreal_mode::SurrealMode, surreal_time_spent::SurrealTimeSpent,
+    surreal_working_on::SurrealWorkingOn,
 };
 
 #[derive(Clone, Debug)]
@@ -34,6 +35,9 @@ pub(crate) struct SurrealTables {
 
     #[cfg_attr(test, builder(default))]
     pub(crate) surreal_events: Vec<SurrealEvent>,
+
+    #[cfg_attr(test, builder(default))]
+    pub(crate) surreal_working_on: Vec<SurrealWorkingOn>,
 }
 
 impl SurrealTables {
@@ -74,5 +78,9 @@ impl SurrealTables {
 
     pub(crate) fn get_surreal_current_modes(&self) -> &[SurrealCurrentMode] {
         &self.surreal_current_modes
+    }
+
+    pub(crate) fn get_surreal_working_on(&self) -> Option<&SurrealWorkingOn> {
+        self.surreal_working_on.first()
     }
 }
