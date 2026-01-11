@@ -670,7 +670,21 @@ async fn prompt_for_trigger(
                         amount_of_time_prompt =
                             amount_of_time_prompt.with_initial_value(existing_duration_text);
                     }
-                    let amount_of_time = amount_of_time_prompt.prompt().unwrap();
+                    let amount_of_time = match amount_of_time_prompt.prompt() {
+                        Ok(amount_of_time) => amount_of_time,
+                        Err(inquire::InquireError::OperationCanceled) => {
+                            continue 'outer;
+                        }
+                        Err(inquire::InquireError::OperationInterrupted) => {
+                            todo!("Change return type of this function so this can be returned")
+                        }
+                        Err(err) => {
+                            panic!(
+                                "Unexpected error, try restarting the terminal: {}",
+                                err
+                            )
+                        }
+                    };
 
                     match relative_parser.parse(&amount_of_time) {
                         Ok(amount_of_time) => break amount_of_time.saturating_into(),
