@@ -234,6 +234,12 @@ pub(crate) async fn present_normal_do_now_list_menu(
                 ))
                 .await;
             }
+        } else {
+            // Item was not found in the do_now_list, clear stale working_on state
+            send_to_data_storage_layer
+                .send(DataLayerCommands::ClearWorkingOn)
+                .await
+                .unwrap();
         }
     }
 
