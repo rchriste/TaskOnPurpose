@@ -523,154 +523,182 @@ async fn prompt_for_trigger(
     now: &DateTime<Utc>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> SurrealTrigger {
-    let trigger_type = Select::new(
-        "What type of trigger?",
-        vec![
-            TriggerType::WallClockDateTime,
-            TriggerType::LoggedInvocationCount,
-            TriggerType::LoggedAmountOfTimeSpent,
-        ],
-    )
-    .with_starting_cursor(match existing_trigger {
-        Some(t) => trigger_type_to_cursor(t),
-        None => 0,
-    })
-    .with_page_size(default_select_page_size())
-    .prompt()
-    .unwrap();
+    'outer: loop {
+        let trigger_type = Select::new(
+            "What type of trigger?",
+            vec![
+                TriggerType::WallClockDateTime,
+                TriggerType::LoggedInvocationCount,
+                TriggerType::LoggedAmountOfTimeSpent,
+            ],
+        )
+        .with_starting_cursor(match existing_trigger {
+            Some(t) => trigger_type_to_cursor(t),
+            None => 0,
+        })
+        .with_page_size(default_select_page_size())
+        .prompt()
+        .unwrap();
 
-    match trigger_type {
-        TriggerType::WallClockDateTime => loop {
-            let existing_when = existing_trigger.and_then(|t| match t {
-                TriggerWithItemNode::WallClockDateTime { after, .. } => Some(*after),
-                _ => None,
-            });
-            let existing_when = existing_when.map(format_datetime_for_prompt);
-            let mut when_prompt = Text::new("Enter when you want to trigger (\"?\" for help)\n|");
-            if let Some(existing_when) = &existing_when {
-                when_prompt = when_prompt.with_initial_value(existing_when);
-            }
-            let exact_start = match when_prompt.prompt() {
-                Ok(exact_start) => exact_start,
-                Err(InquireError::OperationCanceled) => {
-                    todo!("Go back to the previous menu");
+        match trigger_type {
+            TriggerType::WallClockDateTime => loop {
+                let existing_when = existing_trigger.and_then(|t| match t {
+                    TriggerWithItemNode::WallClockDateTime { after, .. } => Some(*after),
+                    _ => None,
+                });
+                let existing_when = existing_when.map(format_datetime_for_prompt);
+                let mut when_prompt =
+                    Text::new("Enter when you want to trigger (\"?\" for help)\n|");
+                if let Some(existing_when) = &existing_when {
+                    when_prompt = when_prompt.with_initial_value(existing_when);
                 }
-                Err(InquireError::OperationInterrupted) => {
-                    todo!("Change return type of this function so this can be returned")
-                }
-                Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
-            };
-            let exact_start: DateTime<Utc> = match parse_exact_or_relative_datetime(&exact_start) {
-                Some(exact_start) => exact_start.into(),
-                None => {
-                    println!("Invalid date or duration, please try again");
-                    println!();
-                    println!("{}", parse_exact_or_relative_datetime_help_string());
-                    continue;
-                }
-            };
-            break SurrealTrigger::WallClockDateTime(exact_start.into());
-        },
-        TriggerType::LoggedInvocationCount => {
-            let existing_count = existing_trigger.and_then(|t| match t {
-                TriggerWithItemNode::LoggedInvocationCount { count_needed, .. } => {
-                    Some(count_needed.to_string())
-                }
-                _ => None,
-            });
-            let mut count_prompt = Text::new("Enter the count needed");
-            if let Some(existing_count) = &existing_count {
-                count_prompt = count_prompt.with_initial_value(existing_count);
-            }
-            let count_needed = count_prompt.prompt().unwrap();
-            let count_needed = match count_needed.parse::<u32>() {
-                Ok(count_needed) => count_needed,
-                Err(e) => {
-                    todo!("Error: {:?}", e)
-                }
-            };
-            let existing_items_in_scope = existing_trigger.and_then(|t| match t {
-                TriggerWithItemNode::LoggedInvocationCount { items_in_scope, .. } => {
-                    Some(items_in_scope)
-                }
-                _ => None,
-            });
-            let items_in_scope = prompt_for_items_in_scope_with_existing(
-                existing_items_in_scope,
-                send_to_data_storage_layer,
-            )
-            .await;
-
-            SurrealTrigger::LoggedInvocationCount {
-                starting: (*now).into(),
-                count: count_needed,
-                items_in_scope,
-            }
-        }
-        TriggerType::LoggedAmountOfTimeSpent => {
-            lazy_static! {
-                static ref relative_parser: CustomDurationParser<'static> =
-                    CustomDurationParser::builder()
-                        .allow_time_unit_delimiter()
-                        .number_is_optional()
-                        .time_units(&[
-                            CustomTimeUnit::with_default(
-                                TimeUnit::Second,
-                                &["s", "sec", "secs", "second", "seconds"]
-                            ),
-                            CustomTimeUnit::with_default(
-                                TimeUnit::Minute,
-                                &["m", "min", "mins", "minute", "minutes"]
-                            ),
-                            CustomTimeUnit::with_default(TimeUnit::Hour, &["h", "hour", "hours"]),
-                        ])
-                        .build();
-            }
-
-            let existing_duration = existing_trigger.and_then(|t| match t {
-                TriggerWithItemNode::LoggedAmountOfTime {
-                    duration_needed, ..
-                } => Some(duration_needed),
-                _ => None,
-            });
-            let existing_duration_text = existing_duration.map(duration_to_default_prompt);
-
-            let amount_of_time = loop {
-                let mut amount_of_time_prompt = Text::new(
-                    "Enter the amount of time (Examples:\"30sec\", \"30s\", \"30min\", \"30m\", \"2hours\", \"2h\")\n|",
-                );
-                if let Some(existing_duration_text) = &existing_duration_text {
-                    amount_of_time_prompt =
-                        amount_of_time_prompt.with_initial_value(existing_duration_text);
-                }
-                let amount_of_time = amount_of_time_prompt.prompt().unwrap();
-
-                match relative_parser.parse(&amount_of_time) {
-                    Ok(amount_of_time) => break amount_of_time.saturating_into(),
-                    Err(_) => {
-                        println!("Invalid date or duration, please try again");
-                        println!();
-                        continue;
+                let exact_start = match when_prompt.prompt() {
+                    Ok(exact_start) => exact_start,
+                    Err(InquireError::OperationCanceled) => {
+                        continue 'outer;
                     }
-                }
-            };
+                    Err(InquireError::OperationInterrupted) => {
+                        todo!("Change return type of this function so this can be returned")
+                    }
+                    Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+                };
+                let exact_start: DateTime<Utc> =
+                    match parse_exact_or_relative_datetime(&exact_start) {
+                        Some(exact_start) => exact_start.into(),
+                        None => {
+                            println!("Invalid date or duration, please try again");
+                            println!();
+                            println!("{}", parse_exact_or_relative_datetime_help_string());
+                            continue;
+                        }
+                    };
+                break 'outer SurrealTrigger::WallClockDateTime(exact_start.into());
+            },
+            TriggerType::LoggedInvocationCount => {
+                let existing_count = existing_trigger.and_then(|t| match t {
+                    TriggerWithItemNode::LoggedInvocationCount { count_needed, .. } => {
+                        Some(count_needed.to_string())
+                    }
+                    _ => None,
+                });
+                let mut count_initial_value = existing_count;
+                let count_needed = loop {
+                    let mut count_prompt = Text::new("Enter the count needed");
+                    if let Some(existing_count) = &count_initial_value {
+                        count_prompt = count_prompt.with_initial_value(existing_count);
+                    }
 
-            let existing_items_in_scope = existing_trigger.and_then(|t| match t {
-                TriggerWithItemNode::LoggedAmountOfTime { items_in_scope, .. } => {
-                    Some(items_in_scope)
-                }
-                _ => None,
-            });
-            let items_in_scope = prompt_for_items_in_scope_with_existing(
-                existing_items_in_scope,
-                send_to_data_storage_layer,
-            )
-            .await;
+                    let count_needed_raw = match count_prompt.prompt() {
+                        Ok(count_needed) => count_needed,
+                        Err(InquireError::OperationCanceled) => {
+                            continue 'outer;
+                        }
+                        Err(InquireError::OperationInterrupted) => {
+                            todo!("Change return type of this function so this can be returned")
+                        }
+                        Err(err) => {
+                            panic!("Unexpected error, try restarting the terminal: {}", err)
+                        }
+                    };
 
-            SurrealTrigger::LoggedAmountOfTime {
-                starting: (*now).into(),
-                duration: amount_of_time.into(),
-                items_in_scope,
+                    match count_needed_raw.trim().parse::<u32>() {
+                        Ok(count_needed) => break count_needed,
+                        Err(_) => {
+                            println!(
+                                "Invalid count: '{}'. Please enter a whole number (e.g. 3).",
+                                count_needed_raw
+                            );
+                            count_initial_value = Some(count_needed_raw);
+                            continue;
+                        }
+                    }
+                };
+                let existing_items_in_scope = existing_trigger.and_then(|t| match t {
+                    TriggerWithItemNode::LoggedInvocationCount { items_in_scope, .. } => {
+                        Some(items_in_scope)
+                    }
+                    _ => None,
+                });
+                let items_in_scope = prompt_for_items_in_scope_with_existing(
+                    existing_items_in_scope,
+                    send_to_data_storage_layer,
+                )
+                .await;
+
+                break 'outer SurrealTrigger::LoggedInvocationCount {
+                    starting: (*now).into(),
+                    count: count_needed,
+                    items_in_scope,
+                };
+            }
+            TriggerType::LoggedAmountOfTimeSpent => {
+                lazy_static! {
+                    static ref relative_parser: CustomDurationParser<'static> =
+                        CustomDurationParser::builder()
+                            .allow_time_unit_delimiter()
+                            .number_is_optional()
+                            .time_units(&[
+                                CustomTimeUnit::with_default(
+                                    TimeUnit::Second,
+                                    &["s", "sec", "secs", "second", "seconds"]
+                                ),
+                                CustomTimeUnit::with_default(
+                                    TimeUnit::Minute,
+                                    &["m", "min", "mins", "minute", "minutes"]
+                                ),
+                                CustomTimeUnit::with_default(
+                                    TimeUnit::Hour,
+                                    &["h", "hour", "hours"]
+                                ),
+                            ])
+                            .build();
+                }
+
+                let existing_duration = existing_trigger.and_then(|t| match t {
+                    TriggerWithItemNode::LoggedAmountOfTime {
+                        duration_needed, ..
+                    } => Some(duration_needed),
+                    _ => None,
+                });
+                let existing_duration_text = existing_duration.map(duration_to_default_prompt);
+
+                let amount_of_time = loop {
+                    let mut amount_of_time_prompt = Text::new(
+                        "Enter the amount of time (Examples:\"30sec\", \"30s\", \"30min\", \"30m\", \"2hours\", \"2h\")\n|",
+                    );
+                    if let Some(existing_duration_text) = &existing_duration_text {
+                        amount_of_time_prompt =
+                            amount_of_time_prompt.with_initial_value(existing_duration_text);
+                    }
+                    let amount_of_time = amount_of_time_prompt.prompt().unwrap();
+
+                    match relative_parser.parse(&amount_of_time) {
+                        Ok(amount_of_time) => break amount_of_time.saturating_into(),
+                        Err(_) => {
+                            println!("Invalid date or duration, please try again");
+                            println!();
+                            continue;
+                        }
+                    }
+                };
+
+                let existing_items_in_scope = existing_trigger.and_then(|t| match t {
+                    TriggerWithItemNode::LoggedAmountOfTime { items_in_scope, .. } => {
+                        Some(items_in_scope)
+                    }
+                    _ => None,
+                });
+                let items_in_scope = prompt_for_items_in_scope_with_existing(
+                    existing_items_in_scope,
+                    send_to_data_storage_layer,
+                )
+                .await;
+
+                break 'outer SurrealTrigger::LoggedAmountOfTime {
+                    starting: (*now).into(),
+                    duration: amount_of_time.into(),
+                    items_in_scope,
+                };
             }
         }
     }
