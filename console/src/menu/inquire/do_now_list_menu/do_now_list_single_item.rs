@@ -57,6 +57,7 @@ use super::DisplayFormat;
 enum DoNowListSingleItemSelection<'e> {
     ChangeItemType { current: &'e SurrealItemType },
     CaptureNewItem,
+    StartWorkingOnThis,
     GiveThisItemAParent,
     ChangeReadyAndUrgencyPlan,
     UnableToDoThisRightNow,
@@ -79,6 +80,7 @@ impl Display for DoNowListSingleItemSelection<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CaptureNewItem => write!(f, "Capture New Item"),
+            Self::StartWorkingOnThis => write!(f, "Start working on this"),
             Self::UpdateSummary => write!(f, "Update Summary"),
             Self::SwitchToParentItem(parent_item, _) => {
                 write!(f, "⇄ Select larger Reason: {}", parent_item)
@@ -133,6 +135,8 @@ impl<'e> DoNowListSingleItemSelection<'e> {
         }
 
         list.push(Self::CaptureNewItem);
+
+        list.push(Self::StartWorkingOnThis);
         list.push(Self::WorkedOnThis);
 
         list.push(Self::Finished);
@@ -249,6 +253,24 @@ pub(crate) async fn present_do_now_list_item_selected(
             ))
             .await
         }
+        Ok(DoNowListSingleItemSelection::StartWorkingOnThis) => {
+            send_to_data_storage_layer
+                .send(DataLayerCommands::SetWorkingOn {
+                    item: menu_for.get_surreal_record_id().clone(),
+                    when_started: Utc::now().into(),
+                })
+                .await
+                .unwrap();
+
+            Box::pin(present_do_now_list_item_selected(
+                menu_for,
+                why_in_scope,
+                Utc::now(),
+                do_now_list,
+                send_to_data_storage_layer,
+            ))
+            .await
+        }
         Ok(DoNowListSingleItemSelection::StateASmallerAction) => {
             state_a_smaller_action(menu_for.get_item_node(), send_to_data_storage_layer).await?;
             let surreal_tables = SurrealTables::new(send_to_data_storage_layer)
@@ -297,6 +319,10 @@ pub(crate) async fn present_do_now_list_item_selected(
             Ok(())
         }
         Ok(DoNowListSingleItemSelection::UnableToDoThisRightNow) => {
+            send_to_data_storage_layer
+                .send(DataLayerCommands::ClearWorkingOn)
+                .await
+                .unwrap();
             let base_data = do_now_list.get_base_data();
             present_set_ready_and_urgency_plan_menu(menu_for, base_data, send_to_data_storage_layer)
                 .await
@@ -309,6 +335,10 @@ pub(crate) async fn present_do_now_list_item_selected(
             review_item::present_review_item_menu(menu_for, send_to_data_storage_layer).await
         }
         Ok(DoNowListSingleItemSelection::WorkedOnThis) => {
+            send_to_data_storage_layer
+                .send(DataLayerCommands::ClearWorkingOn)
+                .await
+                .unwrap();
             let base_data = do_now_list.get_base_data();
             present_set_ready_and_urgency_plan_menu(
                 menu_for,
@@ -320,6 +350,7 @@ pub(crate) async fn present_do_now_list_item_selected(
                 menu_for,
                 why_in_scope,
                 &when_selected,
+                base_data,
                 send_to_data_storage_layer,
             )
             .await
@@ -333,10 +364,12 @@ pub(crate) async fn present_do_now_list_item_selected(
                 send_to_data_storage_layer,
             )
             .await?;
+            let base_data = do_now_list.get_base_data();
             log_worked_on_this::log_worked_on_this(
                 menu_for,
                 why_in_scope,
                 &when_selected,
+                base_data,
                 send_to_data_storage_layer,
             )
             .await
@@ -434,6 +467,11 @@ async fn finish_do_now_item(
             item: finish_this.get_surreal_record_id().clone(),
             when_finished: now.into(),
         })
+        .await
+        .unwrap();
+
+    send_to_data_storage_layer
+        .send(DataLayerCommands::ClearWorkingOn)
         .await
         .unwrap();
 

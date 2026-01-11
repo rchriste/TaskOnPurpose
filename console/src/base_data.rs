@@ -12,6 +12,7 @@ use surrealdb::RecordId;
 use crate::data_storage::surrealdb_layer::{
     surreal_current_mode::SurrealCurrentMode,
     surreal_in_the_moment_priority::SurrealInTheMomentPriority, surreal_tables::SurrealTables,
+    surreal_working_on::SurrealWorkingOn,
 };
 
 use self::{
@@ -91,6 +92,10 @@ impl BaseData {
 
     pub(crate) fn get_surreal_current_modes(&self) -> &[SurrealCurrentMode] {
         self.borrow_surreal_tables().get_surreal_current_modes()
+    }
+
+    pub(crate) fn get_surreal_working_on(&self) -> Option<&SurrealWorkingOn> {
+        self.borrow_surreal_tables().get_surreal_working_on()
     }
 
     pub(crate) fn get_modes(&self) -> &[Mode<'_>] {
