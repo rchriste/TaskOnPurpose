@@ -7,6 +7,7 @@ use surrealdb::sql::Datetime;
 use tokio::sync::{mpsc::Sender, oneshot};
 
 use crate::{
+    base_data::BaseData,
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands, surreal_in_the_moment_priority::SurrealAction,
         surreal_time_spent::SurrealDedication,
@@ -26,6 +27,7 @@ pub(crate) async fn log_worked_on_this(
     selected: &ItemStatus<'_>,
     why_in_scope: &HashSet<WhyInScope>,
     when_selected: &DateTime<Utc>,
+    base_data: &BaseData,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     //TODO: Change Error return type to a custom struct ExitProgram or something
@@ -42,6 +44,8 @@ pub(crate) async fn log_worked_on_this(
             send_to_data_storage_layer,
             when_selected,
             selected.get_now(),
+            base_data,
+            selected.get_surreal_record_id(),
         )
         .await?;
         // -When marked "I worked on this"
@@ -57,6 +61,11 @@ pub(crate) async fn log_worked_on_this(
             };
             send_to_data_storage_layer
                 .send(DataLayerCommands::RecordTimeSpent(time_spent))
+                .await
+                .unwrap();
+
+            send_to_data_storage_layer
+                .send(DataLayerCommands::ClearWorkingOn)
                 .await
                 .unwrap();
             break;
@@ -77,6 +86,7 @@ fn create_working_on_list(selected: &ItemStatus<'_>) -> Vec<SurrealAction> {
 
 #[derive(Clone)]
 enum StartedWhen {
+    WhenWorkOnThisWasStarted(DateTime<Local>),
     WhenLastItemFinished(DateTime<Local>),
     WhenBulletListWasFirstShown(DateTime<Local>),
     WhenThisItemWasSelected(DateTime<Local>),
@@ -86,6 +96,13 @@ enum StartedWhen {
 impl Display for StartedWhen {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            StartedWhen::WhenWorkOnThisWasStarted(when_started_working_on_this) => {
+                write!(
+                    f,
+                    "When you said you started working on this (i.e. {})",
+                    when_started_working_on_this.format("%a %d %b %Y %I:%M:%S%p")
+                )
+            }
             StartedWhen::WhenThisItemWasSelected(when_selected) => {
                 write!(
                     f,
@@ -144,10 +161,25 @@ async fn ask_when_started_and_stopped(
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
     when_selected: &DateTime<Utc>,
     bullet_list_created: &DateTime<Utc>,
+    base_data: &BaseData,
+    selected_item_id: &surrealdb::RecordId,
 ) -> Result<(DateTime<Utc>, DateTime<Utc>), ()> {
     let when_last_time_finished = get_when_the_last_item_finished(send_to_data_storage_layer).await;
 
+    // Default to the persisted "start working" timestamp if the user used that feature.
+    // (We only offer it when the persisted record matches this item.)
+    let when_started_working_on_this: Option<DateTime<Utc>> = base_data
+        .get_surreal_working_on()
+        .filter(|record| &record.item == selected_item_id)
+        .map(|record| record.when_started.clone().into());
+
     let mut started_when = Vec::default();
+
+    if let Some(when_started_working_on_this) = when_started_working_on_this {
+        started_when.push(StartedWhen::WhenWorkOnThisWasStarted(
+            when_started_working_on_this.into(),
+        ));
+    }
 
     if let Some(when_last_time_finished) = when_last_time_finished {
         started_when.push(StartedWhen::WhenLastItemFinished(
@@ -171,6 +203,9 @@ async fn ask_when_started_and_stopped(
         .with_page_size(default_select_page_size())
         .prompt();
         let when_started = match started_when {
+            Ok(StartedWhen::WhenWorkOnThisWasStarted(when_started_working_on_this)) => {
+                when_started_working_on_this
+            }
             Ok(StartedWhen::WhenLastItemFinished(when_last_time_finished)) => {
                 when_last_time_finished
             }

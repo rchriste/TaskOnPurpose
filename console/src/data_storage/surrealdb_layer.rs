@@ -12,6 +12,7 @@ pub(crate) mod surreal_item;
 pub(crate) mod surreal_mode;
 pub(crate) mod surreal_tables;
 pub(crate) mod surreal_time_spent;
+pub(crate) mod surreal_working_on;
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
 pub(crate) enum SurrealTrigger {

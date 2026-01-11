@@ -41,12 +41,18 @@ use super::{
     surreal_mode,
     surreal_tables::SurrealTables,
     surreal_time_spent::{SurrealTimeSpent, SurrealTimeSpentVersion0},
+    surreal_working_on::SurrealWorkingOn,
 };
 
 pub(crate) enum DataLayerCommands {
     SendRawData(oneshot::Sender<SurrealTables>),
     SendTimeSpentLog(oneshot::Sender<Vec<SurrealTimeSpent>>),
     RecordTimeSpent(NewTimeSpent),
+    SetWorkingOn {
+        item: RecordId,
+        when_started: Datetime,
+    },
+    ClearWorkingOn,
     FinishItem {
         item: RecordId,
         when_finished: Datetime,
@@ -251,6 +257,10 @@ pub(crate) async fn data_storage_start_and_run(
             Some(DataLayerCommands::RecordTimeSpent(new_time_spent)) => {
                 record_time_spent(new_time_spent, &db).await
             }
+            Some(DataLayerCommands::SetWorkingOn { item, when_started }) => {
+                set_working_on(item, when_started, &db).await
+            }
+            Some(DataLayerCommands::ClearWorkingOn) => clear_working_on(&db).await,
             Some(DataLayerCommands::FinishItem {
                 item,
                 when_finished,
@@ -1013,6 +1023,7 @@ pub(crate) async fn load_from_surrealdb_upgrade_if_needed(db: &Surreal<Any>) -> 
     let surreal_current_modes = db.select(SurrealCurrentMode::TABLE_NAME);
     let surreal_modes = db.select(surreal_mode::SurrealMode::TABLE_NAME);
     let surreal_events = db.select(SurrealEvent::TABLE_NAME);
+    let surreal_working_on = db.select(SurrealWorkingOn::TABLE_NAME);
 
     let all_items: Vec<SurrealItem> = match all_items.await {
         Ok(all_items) => {
@@ -1062,6 +1073,7 @@ pub(crate) async fn load_from_surrealdb_upgrade_if_needed(db: &Surreal<Any>) -> 
         surreal_current_modes: surreal_current_modes.await.unwrap(),
         surreal_modes,
         surreal_events: surreal_events.await.unwrap(),
+        surreal_working_on: surreal_working_on.await.unwrap(),
     }
 }
 
@@ -1121,6 +1133,31 @@ async fn upgrade_time_spent_log(db: &Surreal<Any>) {
 async fn send_time_spent(sender: oneshot::Sender<Vec<SurrealTimeSpent>>, db: &Surreal<Any>) {
     let time_spent = db.select(SurrealTimeSpent::TABLE_NAME).await.unwrap();
     sender.send(time_spent).unwrap();
+}
+
+async fn set_working_on(item: RecordId, when_started: Datetime, db: &Surreal<Any>) {
+    let record = SurrealWorkingOn::new(item, when_started);
+    let mut updated: Vec<SurrealWorkingOn> = db
+        .upsert(SurrealWorkingOn::TABLE_NAME)
+        .content(record.clone())
+        .await
+        .unwrap();
+    if updated.is_empty() {
+        // Annoyingly SurrealDB's upsert seems to just not work sometimes without giving an explicit
+        // error so we fall back to insert.
+        updated = db
+            .insert(SurrealWorkingOn::TABLE_NAME)
+            .content(record.clone())
+            .await
+            .unwrap();
+    }
+    assert!(!updated.is_empty());
+}
+
+async fn clear_working_on(db: &Surreal<Any>) {
+    let id: RecordId = (SurrealWorkingOn::TABLE_NAME, "working_on").into();
+    // Ignore if it doesn't exist.
+    let _deleted: Option<SurrealWorkingOn> = db.delete(id).await.unwrap();
 }
 
 async fn record_time_spent(new_time_spent: NewTimeSpent, db: &Surreal<Any>) {
