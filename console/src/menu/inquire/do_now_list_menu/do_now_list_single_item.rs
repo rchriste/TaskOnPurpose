@@ -410,7 +410,14 @@ pub(crate) async fn present_do_now_list_item_selected(
             Ok(())
         }
         Ok(DoNowListSingleItemSelection::ReturnToDoNowList)
-        | Err(InquireError::OperationCanceled) => Ok(()), //Nothing to do we just want to return to the bullet list
+        | Err(InquireError::OperationCanceled) => {
+            send_to_data_storage_layer
+                .send(DataLayerCommands::ClearWorkingOn)
+                .await
+                .unwrap();
+
+            Ok(())
+        }
         Err(InquireError::OperationInterrupted) => Err(()),
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
     }
