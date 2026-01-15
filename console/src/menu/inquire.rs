@@ -237,7 +237,7 @@ fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Datelike, Days, Duration, Local, NaiveTime, TimeZone};
+    use chrono::{Datelike, Days, Duration, Local, NaiveTime, TimeZone, Utc};
 
     use super::parse_exact_or_relative_datetime;
 
@@ -1935,6 +1935,20 @@ mod tests {
             Some(
                 Local
                     .with_ymd_and_hms(2025, 1, 15, 15, 0, 0)
+                    .earliest()
+                    .unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_exact_or_relative_datetime_writing_a_complete_datetime_without_year() {
+        let current_year = Utc::now().year();
+        assert_eq!(
+            parse_exact_or_relative_datetime("1/15"),
+            Some(
+                Local
+                    .with_ymd_and_hms(current_year, 1, 15, 0, 0, 0)
                     .earliest()
                     .unwrap()
             )
