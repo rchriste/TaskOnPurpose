@@ -116,8 +116,8 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
     };
 
-    // Removing the intermediate submenu means selecting an item directly performs the
-    // same behavior as the prior "Pick This Once" choice.
+    // Selecting an item directly performs the same behavior as the prior
+    // "Pick This Once" choice.
     let original_choice = choice.into();
     handle_item_selection(original_choice, do_now_list, send_to_data_storage_layer).await
 }
