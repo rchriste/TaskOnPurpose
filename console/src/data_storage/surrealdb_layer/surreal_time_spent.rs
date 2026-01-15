@@ -14,7 +14,7 @@ pub(crate) struct SurrealTimeSpent {
     pub(crate) urgency: Option<SurrealUrgency>,
     pub(crate) when_started: Datetime,
     pub(crate) when_stopped: Datetime,
-    pub(crate) dedication: Option<SurrealDedication>,
+    pub(crate) dedication: Option<SurrealDedication>, //TODO: Remove this field, it is no longer used
 }
 
 impl From<SurrealTimeSpent> for Option<RecordId> {
@@ -45,7 +45,7 @@ impl From<NewTimeSpent> for SurrealTimeSpent {
             working_on: new_time_spent.working_on,
             when_started: new_time_spent.when_started.into(),
             when_stopped: new_time_spent.when_stopped.into(),
-            dedication: new_time_spent.dedication,
+            dedication: None,
             urgency: new_time_spent.urgency,
         }
     }

@@ -10,7 +10,6 @@ use crate::{
     base_data::BaseData,
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands, surreal_in_the_moment_priority::SurrealAction,
-        surreal_time_spent::SurrealDedication,
     },
     display::display_duration::DisplayDuration,
     menu::inquire::{
@@ -39,40 +38,32 @@ pub(crate) async fn log_worked_on_this(
 
     let working_on = create_working_on_list(selected);
     // -When started
-    loop {
-        let (when_started, when_stopped) = ask_when_started_and_stopped(
-            send_to_data_storage_layer,
-            when_selected,
-            selected.get_now(),
-            base_data,
-            selected.get_surreal_record_id(),
-        )
-        .await?;
-        // -When marked "I worked on this"
-        // -How much time spent, show amount of time since started and show amount of time since last item completed, or allow user to enter a duration
-        if let Some(dedication) = ask_about_dedication()? {
-            let time_spent = NewTimeSpent {
-                why_in_scope: why_in_scope.to_surreal(),
-                working_on,
-                urgency,
-                when_started,
-                when_stopped,
-                dedication: Some(dedication),
-            };
-            send_to_data_storage_layer
-                .send(DataLayerCommands::RecordTimeSpent(time_spent))
-                .await
-                .unwrap();
+    let (when_started, when_stopped) = ask_when_started_and_stopped(
+        send_to_data_storage_layer,
+        when_selected,
+        selected.get_now(),
+        base_data,
+        selected.get_surreal_record_id(),
+    )
+    .await?;
+    // -When marked "I worked on this"
+    // -How much time spent, show amount of time since started and show amount of time since last item completed, or allow user to enter a duration
+    let time_spent = NewTimeSpent {
+        why_in_scope: why_in_scope.to_surreal(),
+        working_on,
+        urgency,
+        when_started,
+        when_stopped,
+    };
+    send_to_data_storage_layer
+        .send(DataLayerCommands::RecordTimeSpent(time_spent))
+        .await
+        .unwrap();
 
-            send_to_data_storage_layer
-                .send(DataLayerCommands::ClearWorkingOn)
-                .await
-                .unwrap();
-            break;
-        } else {
-            continue; //If the user cancels they should be able to try again
-        }
-    }
+    send_to_data_storage_layer
+        .send(DataLayerCommands::ClearWorkingOn)
+        .await
+        .unwrap();
     Ok(())
 }
 
@@ -320,34 +311,4 @@ async fn get_when_the_last_item_finished(
     }
 
     earliest.map(|earliest| earliest.into())
-}
-
-enum Dedication {
-    Primary,
-    Background,
-}
-
-impl Display for Dedication {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Dedication::Primary => write!(f, "Primary or Main Task"),
-            Dedication::Background => {
-                write!(f, "Background Task, with another Task in the Foreground")
-            }
-        }
-    }
-}
-
-fn ask_about_dedication() -> Result<Option<SurrealDedication>, ()> {
-    let dedication = vec![Dedication::Primary, Dedication::Background];
-    let dedication = Select::new("What is the dedication of this time spent?", dedication)
-        .with_page_size(default_select_page_size())
-        .prompt();
-    match dedication {
-        Ok(Dedication::Primary) => Ok(Some(SurrealDedication::PrimaryTask)),
-        Ok(Dedication::Background) => Ok(Some(SurrealDedication::BackgroundTask)),
-        Err(InquireError::OperationCanceled) => Ok(None),
-        Err(InquireError::OperationInterrupted) => Err(()),
-        Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
-    }
 }
