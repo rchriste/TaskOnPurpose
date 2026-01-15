@@ -791,7 +791,9 @@ pub(crate) async fn present_search_menu(
             )
             .await
         }
-        Ok(SearchMenuUrgencyItem::AllMotivations { motivations }) => {
+        Ok(SearchMenuUrgencyItem::AllMotivations { mut motivations }) => {
+            motivations.sort_by(|a, b| a.get_summary().cmp(b.get_summary()));
+
             let list = motivations
                 .iter()
                 .map(|x| SearchMenuUrgencyItem::Item { item: x })
