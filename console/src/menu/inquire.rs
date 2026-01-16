@@ -1956,7 +1956,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Waiting for a change to be made to date parser package to add support"]
     fn test_parse_exact_or_relative_datetime_writing_a_complete_datetime_without_the_year_with_a_short_time()
      {
         let current_year = Utc::now().year();
