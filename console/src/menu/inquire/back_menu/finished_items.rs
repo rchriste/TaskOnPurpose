@@ -31,7 +31,7 @@ impl Display for FinishedItemListEntry<'_> {
             .as_ref()
             .map(|x| {
                 let x_local = x.with_timezone(&chrono::Local);
-                x_local.format("%a %d %b %Y %I:%M%p").to_string()
+                x_local.format("%a %d %b %Y %I:%M%P").to_string()
             })
             .unwrap_or_else(|| "(no finished date)".to_string());
         write!(
@@ -123,7 +123,7 @@ async fn present_finished_item_detail(
 
     if let Some(finished_at) = menu_for.get_item().get_finished_at().as_ref() {
         let x_local = finished_at.with_timezone(&chrono::Local);
-        println!("Finished: {}", x_local.format("%a %d %b %Y %I:%M%p"));
+        println!("Finished: {}", x_local.format("%a %d %b %Y %I:%M%P"));
     } else {
         println!("Finished: (unknown)");
     }

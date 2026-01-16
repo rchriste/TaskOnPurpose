@@ -54,7 +54,7 @@ impl Display for DisplayUrgencyPlan<'_> {
                                     write!(f, "[Already happened] ")?;
                                 }
                                 let trigger: DateTime<Local> = after.with_timezone(&Local);
-                                write!(f, "After: {} ", trigger.format("%I:%M %p"))?;
+                                write!(f, "After: {} ", trigger.format("%I:%M %P"))?;
                             }
                             TriggerWithItemNode::LoggedInvocationCount {
                                 starting: _starting,
@@ -277,7 +277,7 @@ impl Display for DisplayScheduled<'_> {
                 write!(
                     f,
                     "Exact start: {} lasting {}",
-                    start.format("%I:%M %p"),
+                    start.format("%I:%M %P"),
                     DisplayDurationOneUnit::new(duration)
                 )
             }
@@ -292,8 +292,8 @@ impl Display for DisplayScheduled<'_> {
                 write!(
                     f,
                     "Range start: {}-{} lasting {}",
-                    start_range.0.format("%I:%M %p"),
-                    start_range.1.format("%I:%M %p"),
+                    start_range.0.format("%I:%M %P"),
+                    start_range.1.format("%I:%M %P"),
                     DisplayDurationOneUnit::new(duration)
                 )
             }

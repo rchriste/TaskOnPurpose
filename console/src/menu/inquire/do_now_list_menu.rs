@@ -95,7 +95,7 @@ impl Display for InquireDoNowListItem<'_> {
             Self::RefreshList(bullet_list_created) => write!(
                 f,
                 "🔄  Reload List ({})",
-                bullet_list_created.format("%I:%M%p")
+                bullet_list_created.format("%I:%M%P")
             ),
             Self::DeclareEvent { waiting_on } => {
                 if waiting_on.is_empty() {

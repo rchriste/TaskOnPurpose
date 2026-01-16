@@ -41,7 +41,7 @@ use std::{
 
 fn format_datetime_for_prompt(utc: DateTime<Utc>) -> String {
     utc.with_timezone(&Local)
-        .format("%m/%d/%Y %I:%M%p")
+        .format("%m/%d/%Y %I:%M%P")
         .to_string()
 }
 
@@ -299,7 +299,15 @@ pub(crate) async fn prompt_for_dependencies(
                 };
                 let exact_start = parse_exact_or_relative_datetime(&exact_start);
                 match exact_start {
-                    Some(exact_start) => break exact_start.into(),
+                    Some(exact_start) => {
+                        println!(
+                            "Interpreted as: {}",
+                            exact_start
+                                .with_timezone(&Local)
+                                .format("%a %d %b %Y %I:%M:%S%P")
+                        );
+                        break exact_start.into();
+                    }
                     None => {
                         println!("Invalid date or duration, please try again");
                         println!();
@@ -564,7 +572,15 @@ async fn prompt_for_trigger(
                 };
                 let exact_start: DateTime<Utc> =
                     match parse_exact_or_relative_datetime(&exact_start) {
-                        Some(exact_start) => exact_start.into(),
+                        Some(exact_start) => {
+                            println!(
+                                "Interpreted as: {}",
+                                exact_start
+                                    .with_timezone(&Local)
+                                    .format("%a %d %b %Y %I:%M:%S%P")
+                            );
+                            exact_start.into()
+                        }
                         None => {
                             println!("Invalid date or duration, please try again");
                             println!();
@@ -987,7 +1003,15 @@ fn prompt_to_schedule(existing: Option<&SurrealScheduled>) -> Result<Option<Surr
             let exact_start = exact_prompt.prompt().unwrap();
 
             let exact_start = match parse_exact_or_relative_datetime(&exact_start) {
-                Some(exact_start) => exact_start,
+                Some(exact_start) => {
+                    println!(
+                        "Interpreted as: {}",
+                        exact_start
+                            .with_timezone(&Local)
+                            .format("%a %d %b %Y %I:%M:%S%P")
+                    );
+                    exact_start
+                }
                 None => {
                     println!("Invalid date or duration, please try again");
                     println!();
@@ -1013,7 +1037,15 @@ fn prompt_to_schedule(existing: Option<&SurrealScheduled>) -> Result<Option<Surr
                 }
                 let range_start = match range_start_prompt.prompt() {
                     Ok(range_start) => match parse_exact_or_relative_datetime(&range_start) {
-                        Some(range_start) => range_start,
+                        Some(range_start) => {
+                            println!(
+                                "Interpreted as: {}",
+                                range_start
+                                    .with_timezone(&Local)
+                                    .format("%a %d %b %Y %I:%M:%S%P")
+                            );
+                            range_start
+                        }
                         None => {
                             println!("Invalid date or duration, please try again");
                             println!();
@@ -1046,7 +1078,15 @@ fn prompt_to_schedule(existing: Option<&SurrealScheduled>) -> Result<Option<Surr
                 }
                 let range_end = match range_end_prompt.prompt() {
                     Ok(range_end) => match parse_exact_or_relative_datetime(&range_end) {
-                        Some(range_end) => range_end,
+                        Some(range_end) => {
+                            println!(
+                                "Interpreted as: {}",
+                                range_end
+                                    .with_timezone(&Local)
+                                    .format("%a %d %b %Y %I:%M:%S%P")
+                            );
+                            range_end
+                        }
                         None => {
                             println!("Invalid date or duration, please try again");
                             println!();
