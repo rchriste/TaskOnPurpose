@@ -1259,6 +1259,10 @@ mod tests {
             },
             surreal_tables::SurrealTablesBuilder,
         },
+        node::{
+            item_node::{ItemNode, UrgencyPlanWithItem},
+            item_status::ItemStatus,
+        },
     };
 
     use super::parent_urgency_fallback;
@@ -1266,12 +1270,14 @@ mod tests {
     #[test]
     fn test_parent_urgency_fallback_no_parents() {
         // When no parents exist, should return None
-        let surreal_items = vec![SurrealItemBuilder::default()
-            .id(Some(("surreal_item", "child").into()))
-            .summary("Child Item with no parents")
-            .item_type(SurrealItemType::Action)
-            .build()
-            .unwrap()];
+        let surreal_items = vec![
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "child").into()))
+                .summary("Child Item with no parents")
+                .item_type(SurrealItemType::Action)
+                .build()
+                .unwrap(),
+        ];
 
         let surreal_tables = SurrealTablesBuilder::default()
             .surreal_items(surreal_items)
@@ -1287,13 +1293,7 @@ mod tests {
         let all_item_nodes = items
             .iter()
             .map(|(record_id, item)| {
-                let node = crate::node::item_node::ItemNode::new(
-                    item,
-                    &items,
-                    &parent_lookup,
-                    &events,
-                    &all_time_spent,
-                );
+                let node = ItemNode::new(item, &items, &parent_lookup, &events, &all_time_spent);
                 (*record_id, node)
             })
             .collect::<ahash::HashMap<_, _>>();
@@ -1305,8 +1305,7 @@ mod tests {
         let child_node = all_item_nodes
             .get(child_item.get_surreal_record_id())
             .unwrap();
-        let child_status =
-            crate::node::item_status::ItemStatus::new(child_node, &all_item_nodes);
+        let child_status = ItemStatus::new(child_node, &all_item_nodes);
 
         let result = parent_urgency_fallback(Some(&child_status));
 
@@ -1355,13 +1354,7 @@ mod tests {
         let all_item_nodes = items
             .iter()
             .map(|(record_id, item)| {
-                let node = crate::node::item_node::ItemNode::new(
-                    item,
-                    &items,
-                    &parent_lookup,
-                    &events,
-                    &all_time_spent,
-                );
+                let node = ItemNode::new(item, &items, &parent_lookup, &events, &all_time_spent);
                 (*record_id, node)
             })
             .collect::<ahash::HashMap<_, _>>();
@@ -1373,8 +1366,7 @@ mod tests {
         let child_node = all_item_nodes
             .get(child_item.get_surreal_record_id())
             .unwrap();
-        let child_status =
-            crate::node::item_status::ItemStatus::new(child_node, &all_item_nodes);
+        let child_status = ItemStatus::new(child_node, &all_item_nodes);
 
         let result = parent_urgency_fallback(Some(&child_status));
 
@@ -1384,7 +1376,7 @@ mod tests {
         );
         let urgency_plan = result.unwrap();
         match urgency_plan {
-            crate::node::item_node::UrgencyPlanWithItem::StaysTheSame(urgency) => {
+            UrgencyPlanWithItem::StaysTheSame(urgency) => {
                 assert_eq!(
                     *urgency,
                     SurrealUrgency::InTheModeDefinitelyUrgent,
@@ -1445,13 +1437,7 @@ mod tests {
         let all_item_nodes = items
             .iter()
             .map(|(record_id, item)| {
-                let node = crate::node::item_node::ItemNode::new(
-                    item,
-                    &items,
-                    &parent_lookup,
-                    &events,
-                    &all_time_spent,
-                );
+                let node = ItemNode::new(item, &items, &parent_lookup, &events, &all_time_spent);
                 (*record_id, node)
             })
             .collect::<ahash::HashMap<_, _>>();
@@ -1463,8 +1449,7 @@ mod tests {
         let child_node = all_item_nodes
             .get(child_item.get_surreal_record_id())
             .unwrap();
-        let child_status =
-            crate::node::item_status::ItemStatus::new(child_node, &all_item_nodes);
+        let child_status = ItemStatus::new(child_node, &all_item_nodes);
 
         let result = parent_urgency_fallback(Some(&child_status));
 
@@ -1474,7 +1459,7 @@ mod tests {
         );
         let urgency_plan = result.unwrap();
         match urgency_plan {
-            crate::node::item_node::UrgencyPlanWithItem::StaysTheSame(urgency) => {
+            UrgencyPlanWithItem::StaysTheSame(urgency) => {
                 assert_eq!(
                     *urgency,
                     SurrealUrgency::InTheModeDefinitelyUrgent,
@@ -1524,13 +1509,7 @@ mod tests {
         let all_item_nodes = items
             .iter()
             .map(|(record_id, item)| {
-                let node = crate::node::item_node::ItemNode::new(
-                    item,
-                    &items,
-                    &parent_lookup,
-                    &events,
-                    &all_time_spent,
-                );
+                let node = ItemNode::new(item, &items, &parent_lookup, &events, &all_time_spent);
                 (*record_id, node)
             })
             .collect::<ahash::HashMap<_, _>>();
@@ -1542,8 +1521,7 @@ mod tests {
         let child_node = all_item_nodes
             .get(child_item.get_surreal_record_id())
             .unwrap();
-        let child_status =
-            crate::node::item_status::ItemStatus::new(child_node, &all_item_nodes);
+        let child_status = ItemStatus::new(child_node, &all_item_nodes);
 
         let result = parent_urgency_fallback(Some(&child_status));
 
@@ -1553,7 +1531,7 @@ mod tests {
         );
         let urgency_plan = result.unwrap();
         match urgency_plan {
-            crate::node::item_node::UrgencyPlanWithItem::StaysTheSame(urgency) => {
+            UrgencyPlanWithItem::StaysTheSame(urgency) => {
                 assert_eq!(
                     *urgency,
                     SurrealUrgency::InTheModeDefinitelyUrgent,
@@ -1599,13 +1577,7 @@ mod tests {
         let all_item_nodes = items
             .iter()
             .map(|(record_id, item)| {
-                let node = crate::node::item_node::ItemNode::new(
-                    item,
-                    &items,
-                    &parent_lookup,
-                    &events,
-                    &all_time_spent,
-                );
+                let node = ItemNode::new(item, &items, &parent_lookup, &events, &all_time_spent);
                 (*record_id, node)
             })
             .collect::<ahash::HashMap<_, _>>();
@@ -1617,8 +1589,7 @@ mod tests {
         let child_node = all_item_nodes
             .get(child_item.get_surreal_record_id())
             .unwrap();
-        let child_status =
-            crate::node::item_status::ItemStatus::new(child_node, &all_item_nodes);
+        let child_status = ItemStatus::new(child_node, &all_item_nodes);
 
         let result = parent_urgency_fallback(Some(&child_status));
 
