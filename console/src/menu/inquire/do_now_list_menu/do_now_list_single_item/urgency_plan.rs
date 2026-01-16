@@ -25,11 +25,9 @@ use crate::{
     },
     new_event::{NewEvent, NewEventBuilder},
     node::{
-        Filter, Urgency,
-        item_status::{
-            DependencyWithItemNode, ItemStatus, ItemsInScopeWithItemNode, TriggerWithItemNode,
-            UrgencyPlanWithItemNode,
-        },
+        Filter, GetUrgencyNow, Urgency,
+        item_node::{ItemsInScopeWithItem, TriggerWithItem, UrgencyPlanWithItem},
+        item_status::{DependencyWithItemNode, ItemStatus},
     },
 };
 use inquire::{InquireError, Select, Text};
@@ -57,26 +55,62 @@ fn surreal_urgency_to_cursor(urgency: &SurrealUrgency) -> usize {
     }
 }
 
-fn trigger_type_to_cursor(trigger: &TriggerWithItemNode<'_>) -> usize {
+fn parent_urgency_fallback<'a>(
+    currently_selected: Option<&'a ItemStatus<'a>>,
+) -> Option<&'a UrgencyPlanWithItem<'a>> {
+    let currently_selected = currently_selected?;
+
+    let mut best: Option<&UrgencyPlanWithItem> = None;
+
+    // Prefer active parents; if there aren't any active parents, fall back to all parents.
+    for filter in [Filter::Active, Filter::All] {
+        for parent in currently_selected.get_parents(filter) {
+            if let Some(parent_urgency) = parent.get_urgency_plan()
+                && let Some(urgency_now) = parent_urgency.get_urgency_now()
+            {
+                let parent_int = surreal_urgency_to_cursor(urgency_now);
+                best = Some(best.map_or(parent_urgency, |existing| {
+                    if let Some(existing_urgency_now) = existing.get_urgency_now() {
+                        let existing_int = surreal_urgency_to_cursor(existing_urgency_now);
+                        if existing_int > parent_int {
+                            existing
+                        } else {
+                            parent_urgency
+                        }
+                    } else {
+                        parent_urgency
+                    }
+                }));
+            }
+        }
+        if best.is_some() {
+            return best;
+        }
+    }
+
+    best
+}
+
+fn trigger_type_to_cursor(trigger: &TriggerWithItem<'_>) -> usize {
     match trigger {
-        TriggerWithItemNode::WallClockDateTime { .. } => 0,
-        TriggerWithItemNode::LoggedInvocationCount { .. } => 1,
-        TriggerWithItemNode::LoggedAmountOfTime { .. } => 2,
+        TriggerWithItem::WallClockDateTime { .. } => 0,
+        TriggerWithItem::LoggedInvocationCount { .. } => 1,
+        TriggerWithItem::LoggedAmountOfTime { .. } => 2,
     }
 }
 
 fn items_in_scope_with_item_node_to_surreal(
-    items: &ItemsInScopeWithItemNode<'_>,
+    items: &ItemsInScopeWithItem<'_>,
 ) -> SurrealItemsInScope {
     match items {
-        ItemsInScopeWithItemNode::All => SurrealItemsInScope::All,
-        ItemsInScopeWithItemNode::Include(items) => SurrealItemsInScope::Include(
+        ItemsInScopeWithItem::All => SurrealItemsInScope::All,
+        ItemsInScopeWithItem::Include(items) => SurrealItemsInScope::Include(
             items
                 .iter()
                 .map(|x| x.get_surreal_record_id().clone())
                 .collect(),
         ),
-        ItemsInScopeWithItemNode::Exclude(items) => SurrealItemsInScope::Exclude(
+        ItemsInScopeWithItem::Exclude(items) => SurrealItemsInScope::Exclude(
             items
                 .iter()
                 .map(|x| x.get_surreal_record_id().clone())
@@ -85,11 +119,11 @@ fn items_in_scope_with_item_node_to_surreal(
     }
 }
 
-fn describe_items_in_scope(items: &ItemsInScopeWithItemNode<'_>) -> String {
+fn describe_items_in_scope(items: &ItemsInScopeWithItem<'_>) -> String {
     const MAX_ITEMS: usize = 5;
     match items {
-        ItemsInScopeWithItemNode::All => "Any/all items".to_string(),
-        ItemsInScopeWithItemNode::Include(items) => {
+        ItemsInScopeWithItem::All => "Any/all items".to_string(),
+        ItemsInScopeWithItem::Include(items) => {
             let shown = items
                 .iter()
                 .take(MAX_ITEMS)
@@ -102,7 +136,7 @@ fn describe_items_in_scope(items: &ItemsInScopeWithItemNode<'_>) -> String {
                 format!("Include: {}", shown.join("; "))
             }
         }
-        ItemsInScopeWithItemNode::Exclude(items) => {
+        ItemsInScopeWithItem::Exclude(items) => {
             let shown = items
                 .iter()
                 .take(MAX_ITEMS)
@@ -165,6 +199,7 @@ impl Display for ReadySelection {
 
 pub(crate) async fn prompt_for_dependencies_and_urgency_plan(
     currently_selected: Option<&ItemStatus<'_>>,
+    default_urgency: Option<&UrgencyPlanWithItem<'_>>,
     base_data: &BaseData,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> (Vec<AddOrRemove>, SurrealUrgencyPlan) {
@@ -172,7 +207,7 @@ pub(crate) async fn prompt_for_dependencies_and_urgency_plan(
         prompt_for_dependencies(currently_selected, base_data, send_to_data_storage_layer).await;
     let now = Utc::now();
     let urgency_plan =
-        prompt_for_urgency_plan(currently_selected, &now, send_to_data_storage_layer).await;
+        prompt_for_urgency_plan(default_urgency, &now, send_to_data_storage_layer).await;
     (ready.unwrap(), urgency_plan)
 }
 
@@ -408,26 +443,23 @@ pub(crate) async fn prompt_for_dependencies(
 }
 
 pub(crate) async fn prompt_for_urgency_plan(
-    currently_selected: Option<&ItemStatus<'_>>,
+    default_urgency_plan: Option<&UrgencyPlanWithItem<'_>>,
     now: &DateTime<Utc>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> SurrealUrgencyPlan {
     let (existing_initial, existing_later, existing_triggers, existing_is_escalating) =
-        match currently_selected.and_then(|x| x.get_urgency_plan().as_ref()) {
-            Some(UrgencyPlanWithItemNode::WillEscalate {
+        match default_urgency_plan {
+            Some(UrgencyPlanWithItem::WillEscalate {
                 initial,
                 triggers,
                 later,
             }) => (Some(initial), Some(later), Some(triggers.as_slice()), true),
-            Some(UrgencyPlanWithItemNode::StaysTheSame(initial)) => {
-                (Some(initial), None, None, false)
-            }
+            Some(UrgencyPlanWithItem::StaysTheSame(initial)) => (Some(initial), None, None, false),
             None => (None, None, None, false),
         };
 
     println!("Initial Urgency");
-    let initial_urgency = prompt_for_urgency(existing_initial, 6);
-    let initial_cursor = surreal_urgency_to_cursor(&initial_urgency);
+    let initial_urgency = prompt_for_urgency(existing_initial);
 
     let urgency_plan = Select::new(
         "Does the urgency escalate?|",
@@ -448,8 +480,7 @@ pub(crate) async fn prompt_for_urgency_plan(
                 prompt_for_triggers(existing_triggers, now, send_to_data_storage_layer).await;
 
             println!("Later Urgency");
-            let later_fallback_cursor = initial_cursor.saturating_sub(1);
-            let later_urgency = prompt_for_urgency(existing_later, later_fallback_cursor);
+            let later_urgency = prompt_for_urgency(existing_later);
 
             SurrealUrgencyPlan::WillEscalate {
                 initial: initial_urgency,
@@ -495,7 +526,7 @@ impl Display for AddAnotherTrigger {
 }
 
 pub(crate) async fn prompt_for_triggers(
-    existing_triggers: Option<&[TriggerWithItemNode<'_>]>,
+    existing_triggers: Option<&[TriggerWithItem<'_>]>,
     now: &DateTime<Utc>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Vec<SurrealTrigger> {
@@ -527,7 +558,7 @@ pub(crate) async fn prompt_for_triggers(
 }
 
 async fn prompt_for_trigger(
-    existing_trigger: Option<&TriggerWithItemNode<'_>>,
+    existing_trigger: Option<&TriggerWithItem<'_>>,
     now: &DateTime<Utc>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> SurrealTrigger {
@@ -551,7 +582,7 @@ async fn prompt_for_trigger(
         match trigger_type {
             TriggerType::WallClockDateTime => loop {
                 let existing_when = existing_trigger.and_then(|t| match t {
-                    TriggerWithItemNode::WallClockDateTime { after, .. } => Some(*after),
+                    TriggerWithItem::WallClockDateTime { after, .. } => Some(*after),
                     _ => None,
                 });
                 let existing_when = existing_when.map(format_datetime_for_prompt);
@@ -592,7 +623,7 @@ async fn prompt_for_trigger(
             },
             TriggerType::LoggedInvocationCount => {
                 let existing_count = existing_trigger.and_then(|t| match t {
-                    TriggerWithItemNode::LoggedInvocationCount { count_needed, .. } => {
+                    TriggerWithItem::LoggedInvocationCount { count_needed, .. } => {
                         Some(count_needed.to_string())
                     }
                     _ => None,
@@ -630,7 +661,7 @@ async fn prompt_for_trigger(
                     }
                 };
                 let existing_items_in_scope = existing_trigger.and_then(|t| match t {
-                    TriggerWithItemNode::LoggedInvocationCount { items_in_scope, .. } => {
+                    TriggerWithItem::LoggedInvocationCount { items_in_scope, .. } => {
                         Some(items_in_scope)
                     }
                     _ => None,
@@ -671,7 +702,7 @@ async fn prompt_for_trigger(
                 }
 
                 let existing_duration = existing_trigger.and_then(|t| match t {
-                    TriggerWithItemNode::LoggedAmountOfTime {
+                    TriggerWithItem::LoggedAmountOfTime {
                         duration_needed, ..
                     } => Some(duration_needed),
                     _ => None,
@@ -710,7 +741,7 @@ async fn prompt_for_trigger(
                 };
 
                 let existing_items_in_scope = existing_trigger.and_then(|t| match t {
-                    TriggerWithItemNode::LoggedAmountOfTime { items_in_scope, .. } => {
+                    TriggerWithItem::LoggedAmountOfTime { items_in_scope, .. } => {
                         Some(items_in_scope)
                     }
                     _ => None,
@@ -752,7 +783,7 @@ impl Display for KeepOrChange {
 }
 
 async fn prompt_for_items_in_scope_with_existing(
-    existing: Option<&ItemsInScopeWithItemNode<'_>>,
+    existing: Option<&ItemsInScopeWithItem<'_>>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> SurrealItemsInScope {
     if let Some(existing) = existing {
@@ -908,30 +939,26 @@ impl Display for Urgency {
     }
 }
 
-fn prompt_for_urgency(
-    default_urgency: Option<&SurrealUrgency>,
-    fallback_cursor: usize,
-) -> SurrealUrgency {
-    let urgency = Select::new(
-        "Select immediate urgency|",
-        vec![
-            Urgency::MoreUrgentThanAnythingIncludingScheduled,
-            Urgency::ScheduledAnyMode,
-            Urgency::MoreUrgentThanMode,
-            Urgency::InTheModeScheduled,
-            Urgency::InTheModeDefinitelyUrgent,
-            Urgency::InTheModeMaybeUrgent,
-            Urgency::InTheModeByImportance,
-        ],
-    )
-    .with_starting_cursor(
-        default_urgency
-            .map(surreal_urgency_to_cursor)
-            .unwrap_or(fallback_cursor),
-    )
-    .with_page_size(default_select_page_size())
-    .prompt()
-    .unwrap();
+fn prompt_for_urgency(default_urgency: Option<&SurrealUrgency>) -> SurrealUrgency {
+    let options = vec![
+        Urgency::MoreUrgentThanAnythingIncludingScheduled,
+        Urgency::ScheduledAnyMode,
+        Urgency::MoreUrgentThanMode,
+        Urgency::InTheModeScheduled,
+        Urgency::InTheModeDefinitelyUrgent,
+        Urgency::InTheModeMaybeUrgent,
+        Urgency::InTheModeByImportance,
+    ];
+    let options_count = options.len().saturating_sub(1);
+    let urgency = Select::new("Select immediate urgency|", options)
+        .with_starting_cursor(
+            default_urgency
+                .map(surreal_urgency_to_cursor)
+                .unwrap_or(options_count),
+        )
+        .with_page_size(default_select_page_size())
+        .prompt()
+        .unwrap();
     match urgency {
         Urgency::MoreUrgentThanAnythingIncludingScheduled => {
             SurrealUrgency::MoreUrgentThanAnythingIncludingScheduled
@@ -1163,8 +1190,14 @@ pub(crate) async fn present_set_ready_and_urgency_plan_menu(
     base_data: &BaseData,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
+    let default_urgency = selected
+        .get_item_node()
+        .get_urgency_plan()
+        .as_ref()
+        .or_else(|| parent_urgency_fallback(Some(selected)));
     let (dependencies, urgency_plan) = prompt_for_dependencies_and_urgency_plan(
         Some(selected),
+        default_urgency,
         base_data,
         send_to_data_storage_layer,
     )
