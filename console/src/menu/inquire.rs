@@ -1956,6 +1956,22 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "Waiting for a change to be made to date parser package to add support"]
+    fn test_parse_exact_or_relative_datetime_writing_a_complete_datetime_without_the_year_with_a_short_time()
+     {
+        let current_year = Utc::now().year();
+        assert_eq!(
+            parse_exact_or_relative_datetime("1/15 3pm"),
+            Some(
+                Local
+                    .with_ymd_and_hms(current_year, 1, 15, 15, 0, 0)
+                    .earliest()
+                    .unwrap()
+            )
+        );
+    }
+
+    #[test]
     fn test_parse_exact_or_relative_datetime_an_invalid_date_returns_none() {
         assert_eq!(parse_exact_or_relative_datetime("invalid date"), None);
     }
