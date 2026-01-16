@@ -136,10 +136,11 @@ impl<'e> DoNowListSingleItemSelection<'e> {
 
         list.push(Self::CaptureNewItem);
 
-        list.push(Self::StartWorkingOnThis);
         list.push(Self::WorkedOnThis);
 
         list.push(Self::Finished);
+
+        list.push(Self::StartWorkingOnThis);
 
         list.push(Self::UnableToDoThisRightNow);
 

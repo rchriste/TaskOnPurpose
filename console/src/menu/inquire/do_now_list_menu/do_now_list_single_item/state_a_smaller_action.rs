@@ -173,8 +173,10 @@ pub(crate) async fn state_a_child_action_new_item(
             };
             let parent = selected_item;
 
+            let default_urgency = selected_item.get_urgency_plan().as_ref();
             let (dependencies, urgency_plan) = prompt_for_dependencies_and_urgency_plan(
                 None,
+                default_urgency,
                 base_data,
                 send_to_data_storage_layer,
             )
