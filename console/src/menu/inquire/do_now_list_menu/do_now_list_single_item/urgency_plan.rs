@@ -72,7 +72,7 @@ fn parent_urgency_fallback<'a>(
                 best = Some(best.map_or(parent_urgency, |existing| {
                     if let Some(existing_urgency_now) = existing.get_urgency_now() {
                         let existing_int = surreal_urgency_to_cursor(existing_urgency_now);
-                        if existing_int > parent_int {
+                        if existing_int < parent_int {
                             existing
                         } else {
                             parent_urgency
@@ -1244,4 +1244,400 @@ pub(crate) async fn present_set_ready_and_urgency_plan_menu(
         .unwrap();
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use crate::{
+        calculated_data::parent_lookup::ParentLookup,
+        data_storage::surrealdb_layer::{
+            surreal_item::{
+                SurrealItemBuilder, SurrealItemType, SurrealMotivationKind, SurrealOrderedSubItem,
+                SurrealUrgency, SurrealUrgencyPlan,
+            },
+            surreal_tables::SurrealTablesBuilder,
+        },
+    };
+
+    use super::parent_urgency_fallback;
+
+    #[test]
+    fn test_parent_urgency_fallback_no_parents() {
+        // When no parents exist, should return None
+        let surreal_items = vec![SurrealItemBuilder::default()
+            .id(Some(("surreal_item", "child").into()))
+            .summary("Child Item with no parents")
+            .item_type(SurrealItemType::Action)
+            .build()
+            .unwrap()];
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(surreal_items)
+            .build()
+            .unwrap();
+
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let parent_lookup = ParentLookup::new(&items);
+        let all_time_spent = surreal_tables.make_time_spent_log().collect::<Vec<_>>();
+        let events = surreal_tables.make_events();
+
+        let all_item_nodes = items
+            .iter()
+            .map(|(record_id, item)| {
+                let node = crate::node::item_node::ItemNode::new(
+                    item,
+                    &items,
+                    &parent_lookup,
+                    &events,
+                    &all_time_spent,
+                );
+                (*record_id, node)
+            })
+            .collect::<ahash::HashMap<_, _>>();
+
+        let child_item = items
+            .values()
+            .find(|i| i.get_summary() == "Child Item with no parents")
+            .unwrap();
+        let child_node = all_item_nodes
+            .get(child_item.get_surreal_record_id())
+            .unwrap();
+        let child_status =
+            crate::node::item_status::ItemStatus::new(child_node, &all_item_nodes);
+
+        let result = parent_urgency_fallback(Some(&child_status));
+
+        assert!(
+            result.is_none(),
+            "Expected None when item has no parents, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_parent_urgency_fallback_single_parent_with_urgency() {
+        // When a single parent exists with urgency, should return that urgency plan
+        let surreal_items = vec![
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "parent").into()))
+                .summary("Parent Item")
+                .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
+                .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(
+                    SurrealUrgency::InTheModeDefinitelyUrgent,
+                )))
+                .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
+                    surreal_item_id: ("surreal_item", "child").into(),
+                }])
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "child").into()))
+                .summary("Child Item")
+                .item_type(SurrealItemType::Action)
+                .build()
+                .unwrap(),
+        ];
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(surreal_items)
+            .build()
+            .unwrap();
+
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let parent_lookup = ParentLookup::new(&items);
+        let all_time_spent = surreal_tables.make_time_spent_log().collect::<Vec<_>>();
+        let events = surreal_tables.make_events();
+
+        let all_item_nodes = items
+            .iter()
+            .map(|(record_id, item)| {
+                let node = crate::node::item_node::ItemNode::new(
+                    item,
+                    &items,
+                    &parent_lookup,
+                    &events,
+                    &all_time_spent,
+                );
+                (*record_id, node)
+            })
+            .collect::<ahash::HashMap<_, _>>();
+
+        let child_item = items
+            .values()
+            .find(|i| i.get_summary() == "Child Item")
+            .unwrap();
+        let child_node = all_item_nodes
+            .get(child_item.get_surreal_record_id())
+            .unwrap();
+        let child_status =
+            crate::node::item_status::ItemStatus::new(child_node, &all_item_nodes);
+
+        let result = parent_urgency_fallback(Some(&child_status));
+
+        assert!(
+            result.is_some(),
+            "Expected Some when parent has urgency plan"
+        );
+        let urgency_plan = result.unwrap();
+        match urgency_plan {
+            crate::node::item_node::UrgencyPlanWithItem::StaysTheSame(urgency) => {
+                assert_eq!(
+                    *urgency,
+                    SurrealUrgency::InTheModeDefinitelyUrgent,
+                    "Expected parent's urgency to be returned"
+                );
+            }
+            _ => panic!("Expected StaysTheSame variant"),
+        }
+    }
+
+    #[test]
+    fn test_parent_urgency_fallback_multiple_parents_selects_most_urgent() {
+        // When multiple parents exist, should select the most urgent one
+        let surreal_items = vec![
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "parent1").into()))
+                .summary("Parent 1 - Less Urgent")
+                .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
+                .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(
+                    SurrealUrgency::InTheModeByImportance,
+                )))
+                .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
+                    surreal_item_id: ("surreal_item", "child").into(),
+                }])
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "parent2").into()))
+                .summary("Parent 2 - More Urgent")
+                .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
+                .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(
+                    SurrealUrgency::InTheModeDefinitelyUrgent,
+                )))
+                .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
+                    surreal_item_id: ("surreal_item", "child").into(),
+                }])
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "child").into()))
+                .summary("Child Item")
+                .item_type(SurrealItemType::Action)
+                .build()
+                .unwrap(),
+        ];
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(surreal_items)
+            .build()
+            .unwrap();
+
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let parent_lookup = ParentLookup::new(&items);
+        let all_time_spent = surreal_tables.make_time_spent_log().collect::<Vec<_>>();
+        let events = surreal_tables.make_events();
+
+        let all_item_nodes = items
+            .iter()
+            .map(|(record_id, item)| {
+                let node = crate::node::item_node::ItemNode::new(
+                    item,
+                    &items,
+                    &parent_lookup,
+                    &events,
+                    &all_time_spent,
+                );
+                (*record_id, node)
+            })
+            .collect::<ahash::HashMap<_, _>>();
+
+        let child_item = items
+            .values()
+            .find(|i| i.get_summary() == "Child Item")
+            .unwrap();
+        let child_node = all_item_nodes
+            .get(child_item.get_surreal_record_id())
+            .unwrap();
+        let child_status =
+            crate::node::item_status::ItemStatus::new(child_node, &all_item_nodes);
+
+        let result = parent_urgency_fallback(Some(&child_status));
+
+        assert!(
+            result.is_some(),
+            "Expected Some when parents have urgency plans"
+        );
+        let urgency_plan = result.unwrap();
+        match urgency_plan {
+            crate::node::item_node::UrgencyPlanWithItem::StaysTheSame(urgency) => {
+                assert_eq!(
+                    *urgency,
+                    SurrealUrgency::InTheModeDefinitelyUrgent,
+                    "Expected the most urgent parent's urgency (InTheModeDefinitelyUrgent is more urgent than InTheModeByImportance)"
+                );
+            }
+            _ => panic!("Expected StaysTheSame variant"),
+        }
+    }
+
+    #[test]
+    fn test_parent_urgency_fallback_active_to_all_filter() {
+        // When no active parents have urgency, should fall back to checking all parents
+        let surreal_items = vec![
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "finished_parent").into()))
+                .summary("Finished Parent")
+                .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
+                .finished(Some(Utc::now().into()))
+                .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(
+                    SurrealUrgency::InTheModeDefinitelyUrgent,
+                )))
+                .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
+                    surreal_item_id: ("surreal_item", "child").into(),
+                }])
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "child").into()))
+                .summary("Child Item")
+                .item_type(SurrealItemType::Action)
+                .build()
+                .unwrap(),
+        ];
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(surreal_items)
+            .build()
+            .unwrap();
+
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let parent_lookup = ParentLookup::new(&items);
+        let all_time_spent = surreal_tables.make_time_spent_log().collect::<Vec<_>>();
+        let events = surreal_tables.make_events();
+
+        let all_item_nodes = items
+            .iter()
+            .map(|(record_id, item)| {
+                let node = crate::node::item_node::ItemNode::new(
+                    item,
+                    &items,
+                    &parent_lookup,
+                    &events,
+                    &all_time_spent,
+                );
+                (*record_id, node)
+            })
+            .collect::<ahash::HashMap<_, _>>();
+
+        let child_item = items
+            .values()
+            .find(|i| i.get_summary() == "Child Item")
+            .unwrap();
+        let child_node = all_item_nodes
+            .get(child_item.get_surreal_record_id())
+            .unwrap();
+        let child_status =
+            crate::node::item_status::ItemStatus::new(child_node, &all_item_nodes);
+
+        let result = parent_urgency_fallback(Some(&child_status));
+
+        assert!(
+            result.is_some(),
+            "Expected Some when finished parent has urgency plan (fallback from Active to All filter)"
+        );
+        let urgency_plan = result.unwrap();
+        match urgency_plan {
+            crate::node::item_node::UrgencyPlanWithItem::StaysTheSame(urgency) => {
+                assert_eq!(
+                    *urgency,
+                    SurrealUrgency::InTheModeDefinitelyUrgent,
+                    "Expected finished parent's urgency to be returned via fallback"
+                );
+            }
+            _ => panic!("Expected StaysTheSame variant"),
+        }
+    }
+
+    #[test]
+    fn test_parent_urgency_fallback_parents_without_urgency() {
+        // When parents exist but none have urgency plans, should return None
+        let surreal_items = vec![
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "parent").into()))
+                .summary("Parent Item without urgency")
+                .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
+                .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
+                    surreal_item_id: ("surreal_item", "child").into(),
+                }])
+                .build()
+                .unwrap(),
+            SurrealItemBuilder::default()
+                .id(Some(("surreal_item", "child").into()))
+                .summary("Child Item")
+                .item_type(SurrealItemType::Action)
+                .build()
+                .unwrap(),
+        ];
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(surreal_items)
+            .build()
+            .unwrap();
+
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let parent_lookup = ParentLookup::new(&items);
+        let all_time_spent = surreal_tables.make_time_spent_log().collect::<Vec<_>>();
+        let events = surreal_tables.make_events();
+
+        let all_item_nodes = items
+            .iter()
+            .map(|(record_id, item)| {
+                let node = crate::node::item_node::ItemNode::new(
+                    item,
+                    &items,
+                    &parent_lookup,
+                    &events,
+                    &all_time_spent,
+                );
+                (*record_id, node)
+            })
+            .collect::<ahash::HashMap<_, _>>();
+
+        let child_item = items
+            .values()
+            .find(|i| i.get_summary() == "Child Item")
+            .unwrap();
+        let child_node = all_item_nodes
+            .get(child_item.get_surreal_record_id())
+            .unwrap();
+        let child_status =
+            crate::node::item_status::ItemStatus::new(child_node, &all_item_nodes);
+
+        let result = parent_urgency_fallback(Some(&child_status));
+
+        assert!(
+            result.is_none(),
+            "Expected None when parent exists but has no urgency plan, got: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_parent_urgency_fallback_none_input() {
+        // When None is passed as input, should return None
+        let result = parent_urgency_fallback(None);
+
+        assert!(
+            result.is_none(),
+            "Expected None when input is None, got: {:?}",
+            result
+        );
+    }
 }
