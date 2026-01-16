@@ -302,7 +302,7 @@ pub(crate) async fn prompt_for_dependencies(
                     Some(exact_start) => {
                         println!(
                             "Interpreted as: {}",
-                            exact_start.format("%a %d %b %Y %I:%M:%S%P")
+                            exact_start.with_timezone(&Local).format("%a %d %b %Y %I:%M:%S%P")
                         );
                         break exact_start.into();
                     }
