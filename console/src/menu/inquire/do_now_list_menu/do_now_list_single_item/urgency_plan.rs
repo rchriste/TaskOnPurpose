@@ -575,7 +575,9 @@ async fn prompt_for_trigger(
                         Some(exact_start) => {
                             println!(
                                 "Interpreted as: {}",
-                                exact_start.with_timezone(&Local).format("%a %d %b %Y %I:%M:%S%P")
+                                exact_start
+                                    .with_timezone(&Local)
+                                    .format("%a %d %b %Y %I:%M:%S%P")
                             );
                             exact_start.into()
                         }
@@ -1004,7 +1006,9 @@ fn prompt_to_schedule(existing: Option<&SurrealScheduled>) -> Result<Option<Surr
                 Some(exact_start) => {
                     println!(
                         "Interpreted as: {}",
-                        exact_start.with_timezone(&Local).format("%a %d %b %Y %I:%M:%S%P")
+                        exact_start
+                            .with_timezone(&Local)
+                            .format("%a %d %b %Y %I:%M:%S%P")
                     );
                     exact_start
                 }
@@ -1036,7 +1040,9 @@ fn prompt_to_schedule(existing: Option<&SurrealScheduled>) -> Result<Option<Surr
                         Some(range_start) => {
                             println!(
                                 "Interpreted as: {}",
-                                range_start.with_timezone(&Local).format("%a %d %b %Y %I:%M:%S%P")
+                                range_start
+                                    .with_timezone(&Local)
+                                    .format("%a %d %b %Y %I:%M:%S%P")
                             );
                             range_start
                         }
@@ -1075,7 +1081,9 @@ fn prompt_to_schedule(existing: Option<&SurrealScheduled>) -> Result<Option<Surr
                         Some(range_end) => {
                             println!(
                                 "Interpreted as: {}",
-                                range_end.with_timezone(&Local).format("%a %d %b %Y %I:%M:%S%P")
+                                range_end
+                                    .with_timezone(&Local)
+                                    .format("%a %d %b %Y %I:%M:%S%P")
                             );
                             range_end
                         }
