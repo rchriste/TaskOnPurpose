@@ -299,7 +299,13 @@ pub(crate) async fn prompt_for_dependencies(
                 };
                 let exact_start = parse_exact_or_relative_datetime(&exact_start);
                 match exact_start {
-                    Some(exact_start) => break exact_start.into(),
+                    Some(exact_start) => {
+                        println!(
+                            "Interpreted as: {}",
+                            exact_start.format("%a %d %b %Y %I:%M:%S%P")
+                        );
+                        break exact_start.into();
+                    }
                     None => {
                         println!("Invalid date or duration, please try again");
                         println!();
