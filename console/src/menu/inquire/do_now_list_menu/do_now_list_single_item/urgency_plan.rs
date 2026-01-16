@@ -41,7 +41,7 @@ use std::{
 
 fn format_datetime_for_prompt(utc: DateTime<Utc>) -> String {
     utc.with_timezone(&Local)
-        .format("%m/%d/%Y %I:%M%p")
+        .format("%m/%d/%Y %I:%M%P")
         .to_string()
 }
 
@@ -302,7 +302,9 @@ pub(crate) async fn prompt_for_dependencies(
                     Some(exact_start) => {
                         println!(
                             "Interpreted as: {}",
-                            exact_start.with_timezone(&Local).format("%a %d %b %Y %I:%M:%S%P")
+                            exact_start
+                                .with_timezone(&Local)
+                                .format("%a %d %b %Y %I:%M:%S%P")
                         );
                         break exact_start.into();
                     }

@@ -87,6 +87,6 @@ fn duration_or_time(now: &DateTime<Local>, time: &DateTime<Local>) -> String {
         let duration = duration.to_std().unwrap();
         format!("{}", DisplayDurationOneUnit::new(&duration))
     } else {
-        format!("{}", time.format("%a %d %b %Y %I:%M%p"))
+        format!("{}", time.format("%a %d %b %Y %I:%M%P"))
     }
 }

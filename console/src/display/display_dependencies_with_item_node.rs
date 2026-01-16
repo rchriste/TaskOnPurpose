@@ -24,7 +24,7 @@ impl Display for DisplayDependenciesWithItemNode<'_> {
                         is_active: _is_active,
                     } => {
                         let datetime: DateTime<Local> = after.with_timezone(&Local);
-                        write!(f, "After {}", datetime.format("%a %d %b %Y %I:%M:%S%p"))?;
+                        write!(f, "After {}", datetime.format("%a %d %b %Y %I:%M:%S%P"))?;
                     }
                     DependencyWithItemNode::UntilScheduled {
                         after,
@@ -34,7 +34,7 @@ impl Display for DisplayDependenciesWithItemNode<'_> {
                         write!(
                             f,
                             "Until scheduled {}",
-                            datetime.format("%a %d %b %Y %I:%M:%S%p")
+                            datetime.format("%a %d %b %Y %I:%M:%S%P")
                         )?
                     }
                     DependencyWithItemNode::AfterItem(dependency) => {

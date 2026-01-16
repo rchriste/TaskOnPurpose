@@ -100,28 +100,28 @@ impl Display for StartedWhen {
                 write!(
                     f,
                     "When you said you started working on this (i.e. {})",
-                    when_started_working_on_this.format("%a %d %b %Y %I:%M:%S%p")
+                    when_started_working_on_this.format("%a %d %b %Y %I:%M:%S%P")
                 )
             }
             StartedWhen::WhenThisItemWasSelected(when_selected) => {
                 write!(
                     f,
                     "When this item was selected (i.e. {})",
-                    when_selected.format("%a %d %b %Y %I:%M:%S%p")
+                    when_selected.format("%a %d %b %Y %I:%M:%S%P")
                 )
             }
             StartedWhen::WhenLastItemFinished(when_last_item_finished) => {
                 write!(
                     f,
                     "When the last item finished (i.e. {})",
-                    when_last_item_finished.format("%a %d %b %Y %I:%M:%S%p")
+                    when_last_item_finished.format("%a %d %b %Y %I:%M:%S%P")
                 )
             }
             StartedWhen::WhenBulletListWasFirstShown(when_bullet_list_was_first_shown) => {
                 write!(
                     f,
                     "When the bullet list was first shown (i.e. {})",
-                    when_bullet_list_was_first_shown.format("%a %d %b %Y %I:%M:%S%p")
+                    when_bullet_list_was_first_shown.format("%a %d %b %Y %I:%M:%S%P")
                 )
             }
             StartedWhen::CustomTime => write!(f, "Enter a Time"),
