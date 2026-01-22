@@ -1,10 +1,16 @@
+use better_term::Style;
+
 use crate::{
     display::display_duration::DisplayDuration, node::item_status::ItemStatus,
     systems::do_now_list::DoNowList,
 };
 
 pub(crate) fn print_time_spent(menu_for: &ItemStatus<'_>, do_now_list: &DoNowList) {
-    print!("Time Spent: ");
+    print!(
+        "{}Time Spent:{}",
+        Style::default().underline(),
+        Style::default()
+    );
     let items = vec![menu_for.get_item()];
     let now = do_now_list.get_now();
     let time_spent = do_now_list
@@ -13,9 +19,9 @@ pub(crate) fn print_time_spent(menu_for: &ItemStatus<'_>, do_now_list: &DoNowLis
         .filter(|x| x.did_work_towards_any(&items))
         .collect::<Vec<_>>();
     if time_spent.is_empty() {
-        println!("None");
+        println!("{}None", Style::default());
     } else {
-        println!();
+        println!("{}", Style::default());
         let a_day_ago = *now - chrono::Duration::days(1);
         let last_day = time_spent
             .iter()

@@ -7,7 +7,7 @@ pub(crate) mod urgency_plan;
 use std::fmt::Display;
 
 use ahash::{HashMap, HashSet};
-use better_term::Style;
+use better_term::{Color, Style};
 use chrono::{DateTime, Utc};
 use inquire::{InquireError, Select, Text};
 use surrealdb::RecordId;
@@ -212,19 +212,28 @@ pub(crate) async fn present_do_now_list_item_selected(
 ) -> Result<(), ()> {
     println!();
     time_spent_summary::print_time_spent(menu_for, do_now_list);
-    println!("Selected Item:");
+    let underline = Style::default().underline();
+    let normal_style = Style::default();
+    let highlight = Style::default().fg(Color::BrightGreen);
+    println!("{}Selected Item:{}", underline, normal_style);
+    let display_item_node = DisplayItemNode::new(
+        menu_for.get_item_node(),
+        Filter::Active,
+        DisplayFormat::MultiLineTree,
+    );
+    let display_item_node = format!("{}", display_item_node);
+    let mut lines = display_item_node.lines();
+    if let Some(first_line) = lines.next() {
+        println!("{}{}{}", highlight, first_line, normal_style);
+    }
+    for line in lines {
+        println!("{}", line);
+    }
     if let Some(urgency) = menu_for.get_urgency_now() {
         let display_urgency = DisplayUrgency::new(urgency, DisplayStyle::Abbreviated);
-        println!("Urgency: {}", display_urgency);
+        println!();
+        println!("{}Urgency:{} {}", underline, normal_style, display_urgency);
     }
-    println!(
-        "{}",
-        DisplayItemNode::new(
-            menu_for.get_item_node(),
-            Filter::Active,
-            DisplayFormat::MultiLineTree
-        )
-    );
     item_children_summary::print_completed_children(menu_for);
     item_children_summary::print_in_progress_children(menu_for, do_now_list.get_all_items_status());
     println!();
