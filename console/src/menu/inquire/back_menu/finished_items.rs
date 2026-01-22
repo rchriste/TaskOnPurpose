@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use better_term::{Color, Style};
 use chrono::Utc;
 use inquire::{InquireError, Select};
 use tokio::sync::mpsc::Sender;
@@ -121,22 +122,35 @@ async fn present_finished_item_detail(
 
     time_spent_summary::print_time_spent(menu_for, do_now_list);
 
+    let underline = Style::default().underline();
+    let normal_style = Style::default();
     if let Some(finished_at) = menu_for.get_item().get_finished_at().as_ref() {
         let x_local = finished_at.with_timezone(&chrono::Local);
-        println!("Finished: {}", x_local.format("%a %d %b %Y %I:%M%P"));
+        println!(
+            "{}Finished: {} {}",
+            underline,
+            x_local.format("%a %d %b %Y %I:%M%P"),
+            normal_style
+        );
     } else {
         println!("Finished: (unknown)");
     }
 
-    println!("Selected Item:");
-    println!(
-        "{}",
-        DisplayItemNode::new(
-            menu_for.get_item_node(),
-            Filter::Active,
-            DisplayFormat::MultiLineTree
-        )
+    let highlight = Style::default().bg(Color::Yellow).fg(Color::Black).bold();
+    println!("{}Selected Item:{}", underline, normal_style);
+    let display_item_node = DisplayItemNode::new(
+        menu_for.get_item_node(),
+        Filter::Active,
+        DisplayFormat::MultiLineTree,
     );
+    let display_item_node = format!("{}", display_item_node);
+    let mut lines = display_item_node.lines();
+    if let Some(first_line) = lines.next() {
+        println!("{}{}{}", highlight, first_line, normal_style);
+    }
+    for line in lines {
+        println!("{}", line);
+    }
 
     item_children_summary::print_completed_children(menu_for);
     item_children_summary::print_in_progress_children(menu_for, do_now_list.get_all_items_status());
