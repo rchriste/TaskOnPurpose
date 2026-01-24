@@ -7,7 +7,7 @@ edition = "2024"
 inquire = { git = "https://github.com/rchriste/inquire", branch = "main", features = ["editor"] } #inquire is for building interactive prompts in terminals
 tokio = { version = "1.44.2", features = ["full"] } #Added so I can use Surreal DB
 #Added so I can store and persist data, kv-mem is an in memory database that is maybe not required in a not test build
-surrealdb = { version = "2.4.0", features = ["kv-mem", "kv-rocksdb"] }
+surrealdb = { version = "2.5.0", features = ["kv-mem", "kv-rocksdb"] }
 serde = "1.0.208" #Implied to be required by surrealdb_extra's getting started documentation
 chrono = "0.4.38"
 fundu = { version = "2.0.1", features = ["standard", "custom"] } #So I can parse when to expect something to be available
