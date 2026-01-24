@@ -418,10 +418,10 @@ pub(crate) async fn present_review_item_menu(
                 selected_item_id = item_status.get_surreal_record_id().clone();
                 continue;
             }
-            ReviewItemMenuChoices::RemoveChild(item_status) => {
+            ReviewItemMenuChoices::RemoveChild(item) => {
                 send_to_data_storage_layer
                     .send(DataLayerCommands::ParentItemRemoveParent {
-                        child: item_status.get_surreal_record_id().clone(),
+                        child: item.get_surreal_record_id().clone(),
                         parent_to_remove: selected_item.get_surreal_record_id().clone(),
                     })
                     .await
