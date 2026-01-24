@@ -249,7 +249,7 @@ pub(crate) async fn present_review_item_menu(
             .expect("Selected item must be in the list of all items");
 
         let choices =
-            ReviewItemMenuChoices::make_list(selected_item, previously_selected_item, &all_items);
+            ReviewItemMenuChoices::make_list(selected_item, previously_selected_item, all_items);
         let selected = Select::new("What would you like to do with this item?", choices)
             .with_page_size(default_select_page_size())
             .prompt()
