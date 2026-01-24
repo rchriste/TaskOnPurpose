@@ -13,9 +13,12 @@ use crate::{
         data_layer_commands::DataLayerCommands, surreal_tables::SurrealTables,
     },
     display::{
+        DisplayStyle,
         display_dependencies_with_item_node::DisplayDependenciesWithItemNode,
-        display_item::DisplayItem, display_item_node::DisplayFormat,
-        display_item_status::DisplayItemStatus, display_urgency_plan::DisplayUrgencyPlan,
+        display_item::DisplayItem,
+        display_item_node::DisplayFormat,
+        display_item_status::DisplayItemStatus,
+        display_urgency_plan::{DisplayUrgency, DisplayUrgencyPlan},
     },
     menu::inquire::{
         default_select_page_size,
@@ -33,6 +36,7 @@ use crate::{
         item_status::{DependencyWithItemNode, ItemStatus},
     },
 };
+use ahash::HashMap;
 
 enum ReviewItemMenuChoices<'e> {
     DoneWithReview,
@@ -58,7 +62,7 @@ enum ReviewItemMenuChoices<'e> {
     AddNewChild,
     GoToParent(&'e Item<'e>),
     RemoveParent(&'e Item<'e>),
-    GoToChild(&'e Item<'e>),
+    GoToChild(&'e ItemStatus<'e>),
     RemoveChild(&'e Item<'e>),
 }
 
@@ -134,8 +138,13 @@ impl Display for ReviewItemMenuChoices<'_> {
                 write!(f, "Remove parent: {}", display_item)
             }
             ReviewItemMenuChoices::GoToChild(item) => {
-                let display_item = DisplayItem::new(item);
-                write!(f, "Go to child: {}", display_item)
+                let display_item = DisplayItem::new(item.get_item());
+                if let Some(urgency) = item.get_urgency_now() {
+                    let display_urgency = DisplayUrgency::new(urgency, DisplayStyle::Abbreviated);
+                    write!(f, "Go to child: {} {}", display_urgency, display_item)
+                } else {
+                    write!(f, "Go to child: {}", display_item)
+                }
             }
             ReviewItemMenuChoices::RemoveChild(item) => {
                 let display_item = DisplayItem::new(item);
@@ -149,6 +158,7 @@ impl ReviewItemMenuChoices<'_> {
     pub(crate) fn make_list<'e>(
         current_item: &'e ItemStatus<'e>,
         previously_selected_item: &'e ItemStatus<'e>,
+        all_items: &'e HashMap<&'e RecordId, ItemStatus<'e>>,
     ) -> Vec<ReviewItemMenuChoices<'e>> {
         let mut list = vec![ReviewItemMenuChoices::DoneWithReview];
 
@@ -195,7 +205,10 @@ impl ReviewItemMenuChoices<'_> {
         list.push(ReviewItemMenuChoices::AddNewChild);
 
         for child in current_item.get_item_node().get_children(Filter::Active) {
-            list.push(ReviewItemMenuChoices::GoToChild(child.get_item()));
+            let child_status = all_items
+                .get(child.get_item().get_surreal_record_id())
+                .expect("Child must be in the list of all items");
+            list.push(ReviewItemMenuChoices::GoToChild(child_status));
         }
 
         for child in current_item.get_item_node().get_children(Filter::Active) {
@@ -235,7 +248,8 @@ pub(crate) async fn present_review_item_menu(
             .get(&selected_item_id)
             .expect("Selected item must be in the list of all items");
 
-        let choices = ReviewItemMenuChoices::make_list(selected_item, previously_selected_item);
+        let choices =
+            ReviewItemMenuChoices::make_list(selected_item, previously_selected_item, all_items);
         let selected = Select::new("What would you like to do with this item?", choices)
             .with_page_size(default_select_page_size())
             .prompt()
@@ -400,8 +414,8 @@ pub(crate) async fn present_review_item_menu(
 
                 continue;
             }
-            ReviewItemMenuChoices::GoToChild(item) => {
-                selected_item_id = item.get_surreal_record_id().clone();
+            ReviewItemMenuChoices::GoToChild(item_status) => {
+                selected_item_id = item_status.get_surreal_record_id().clone();
                 continue;
             }
             ReviewItemMenuChoices::RemoveChild(item) => {
