@@ -152,14 +152,13 @@ impl<'e> DoNowListSingleItemSelection<'e> {
         currently_working_on_item: Option<&'e SurrealWorkingOn>,
     ) -> Vec<Self> {
         //if the currently_working_on_item is not this item then blank it out that we are not working on it
-        let currently_working_on_this_item =
-            currently_working_on_item.and_then(|working_on_item| {
-                if &working_on_item.item == item_node.get_surreal_record_id() {
-                    currently_working_on_item
-                } else {
-                    None
-                }
-            });
+        let currently_working_on_item = currently_working_on_item.and_then(|working_on_item| {
+            if &working_on_item.item == item_node.get_surreal_record_id() {
+                currently_working_on_item
+            } else {
+                None
+            }
+        });
         let mut list = Vec::default();
 
         let has_no_parent = !item_node.has_parents(Filter::Active);
@@ -176,7 +175,7 @@ impl<'e> DoNowListSingleItemSelection<'e> {
 
         list.push(Self::Finished);
 
-        if currently_working_on_this_item.is_none() {
+        if currently_working_on_item.is_none() {
             list.push(Self::StartWorkingOnThis);
         }
 
