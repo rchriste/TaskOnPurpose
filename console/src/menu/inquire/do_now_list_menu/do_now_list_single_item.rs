@@ -8,7 +8,7 @@ use std::fmt::Display;
 
 use ahash::{HashMap, HashSet};
 use better_term::{Color, Style};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 use inquire::{InquireError, Select, Text};
 use surrealdb::RecordId;
 use tokio::sync::mpsc::Sender;
@@ -23,6 +23,7 @@ use crate::{
             Responsibility, SurrealHowMuchIsInMyControl, SurrealItemType, SurrealMotivationKind,
         },
         surreal_tables::SurrealTables,
+        surreal_working_on::SurrealWorkingOn,
     },
     display::{
         DisplayStyle, display_item::DisplayItem, display_item_node::DisplayItemNode,
@@ -55,16 +56,22 @@ use crate::{
 use super::DisplayFormat;
 
 enum DoNowListSingleItemSelection<'e> {
-    ChangeItemType { current: &'e SurrealItemType },
+    ChangeItemType {
+        current: &'e SurrealItemType,
+    },
     CaptureNewItem,
     StartWorkingOnThis,
     GiveThisItemAParent,
     ChangeReadyAndUrgencyPlan,
-    UnableToDoThisRightNow,
+    UnableToDoThisRightNow {
+        started: Option<&'e SurrealWorkingOn>,
+    },
     SomethingElseShouldBeDoneFirst,
     ReviewItem,
     StateASmallerAction,
-    WorkedOnThis,
+    WorkedOnThis {
+        started: Option<&'e SurrealWorkingOn>,
+    },
     Finished,
     ReturnToDoNowList,
     UpdateSummary,
@@ -112,8 +119,25 @@ impl Display for DoNowListSingleItemSelection<'_> {
                 write!(f, "Change Item Type (Currently: {})", current_item_type)
             }
             Self::GiveThisItemAParent => write!(f, "Pick a larger reason"),
-            Self::UnableToDoThisRightNow => write!(f, "I am unable to do this right now"),
-            Self::WorkedOnThis => write!(f, "I worked on this"),
+            Self::UnableToDoThisRightNow { started: _ } => {
+                write!(f, "I am unable to do this right now")
+            }
+            Self::WorkedOnThis { started } => {
+                if let Some(started) = started {
+                    let started = started.when_started.0;
+                    let started: DateTime<Local> = started.into();
+
+                    write!(
+                        f,
+                        "Stop working on (Started: {}{}{})",
+                        Style::default().bold(),
+                        started.format("%a %d %b %Y %I:%M:%S%P"),
+                        Style::default()
+                    )
+                } else {
+                    write!(f, "I worked on this")
+                }
+            }
             Self::Finished => write!(f, "I finished"),
             Self::ReturnToDoNowList => write!(f, "Return to the Do Now Menu"),
             Self::ChangeReadyAndUrgencyPlan => write!(f, "Change Ready & Urgency Plan"),
@@ -125,7 +149,16 @@ impl<'e> DoNowListSingleItemSelection<'e> {
     fn create_list(
         item_node: &'e ItemNode<'e>,
         all_items_status: &'e HashMap<&'e RecordId, ItemStatus<'e>>,
+        currently_working_on_item: Option<&'e SurrealWorkingOn>,
     ) -> Vec<Self> {
+        //if the currently_working_on_item is not this item then blank it out that we are not working on it
+        let currently_working_on_item = currently_working_on_item.and_then(|working_on_item| {
+            if &working_on_item.item == item_node.get_surreal_record_id() {
+                currently_working_on_item
+            } else {
+                None
+            }
+        });
         let mut list = Vec::default();
 
         let has_no_parent = !item_node.has_parents(Filter::Active);
@@ -136,13 +169,19 @@ impl<'e> DoNowListSingleItemSelection<'e> {
 
         list.push(Self::CaptureNewItem);
 
-        list.push(Self::WorkedOnThis);
+        list.push(Self::WorkedOnThis {
+            started: currently_working_on_item,
+        });
 
         list.push(Self::Finished);
 
-        list.push(Self::StartWorkingOnThis);
+        if currently_working_on_item.is_none() {
+            list.push(Self::StartWorkingOnThis);
+        }
 
-        list.push(Self::UnableToDoThisRightNow);
+        list.push(Self::UnableToDoThisRightNow {
+            started: currently_working_on_item,
+        });
 
         list.push(Self::StateASmallerAction);
 
@@ -239,9 +278,11 @@ pub(crate) async fn present_do_now_list_item_selected(
     println!();
 
     let all_items_lap_highest_count = do_now_list.get_all_items_status();
+    let currently_working_on_item = do_now_list.get_base_data().get_surreal_working_on();
     let list = DoNowListSingleItemSelection::create_list(
         menu_for.get_item_node(),
         all_items_lap_highest_count,
+        currently_working_on_item,
     );
 
     let selection = Select::new("Select from the below list|", list)
@@ -328,11 +369,15 @@ pub(crate) async fn present_do_now_list_item_selected(
                 .unwrap();
             Ok(())
         }
-        Ok(DoNowListSingleItemSelection::UnableToDoThisRightNow) => {
-            send_to_data_storage_layer
-                .send(DataLayerCommands::ClearWorkingOn)
-                .await
-                .unwrap();
+        Ok(DoNowListSingleItemSelection::UnableToDoThisRightNow { started }) => {
+            if let Some(working_on) = started
+                && &working_on.item == menu_for.get_surreal_record_id()
+            {
+                send_to_data_storage_layer
+                    .send(DataLayerCommands::ClearWorkingOn)
+                    .await
+                    .unwrap();
+            }
             let base_data = do_now_list.get_base_data();
             present_set_ready_and_urgency_plan_menu(menu_for, base_data, send_to_data_storage_layer)
                 .await
@@ -344,11 +389,15 @@ pub(crate) async fn present_do_now_list_item_selected(
         Ok(DoNowListSingleItemSelection::ReviewItem) => {
             review_item::present_review_item_menu(menu_for, send_to_data_storage_layer).await
         }
-        Ok(DoNowListSingleItemSelection::WorkedOnThis) => {
-            send_to_data_storage_layer
-                .send(DataLayerCommands::ClearWorkingOn)
-                .await
-                .unwrap();
+        Ok(DoNowListSingleItemSelection::WorkedOnThis { started }) => {
+            if let Some(working_on) = started
+                && &working_on.item == menu_for.get_surreal_record_id()
+            {
+                send_to_data_storage_layer
+                    .send(DataLayerCommands::ClearWorkingOn)
+                    .await
+                    .unwrap();
+            }
             let base_data = do_now_list.get_base_data();
             present_set_ready_and_urgency_plan_menu(
                 menu_for,
@@ -420,14 +469,7 @@ pub(crate) async fn present_do_now_list_item_selected(
             Ok(())
         }
         Ok(DoNowListSingleItemSelection::ReturnToDoNowList)
-        | Err(InquireError::OperationCanceled) => {
-            send_to_data_storage_layer
-                .send(DataLayerCommands::ClearWorkingOn)
-                .await
-                .unwrap();
-
-            Ok(())
-        }
+        | Err(InquireError::OperationCanceled) => Ok(()),
         Err(InquireError::OperationInterrupted) => Err(()),
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
     }
@@ -487,10 +529,14 @@ async fn finish_do_now_item(
         .await
         .unwrap();
 
-    send_to_data_storage_layer
-        .send(DataLayerCommands::ClearWorkingOn)
-        .await
-        .unwrap();
+    if let Some(working_on) = do_now_list.get_base_data().get_surreal_working_on()
+        && &working_on.item == finish_this.get_surreal_record_id()
+    {
+        send_to_data_storage_layer
+            .send(DataLayerCommands::ClearWorkingOn)
+            .await
+            .unwrap();
+    }
 
     let list = FinishSelection::make_list(
         &finish_this
