@@ -215,12 +215,13 @@ impl ReviewItemMenuChoices<'_> {
 /// * `item_node` - The ItemNode to render
 /// * `highlight` - Style to apply to the first line (typically bright green)
 /// * `normal_style` - Style to apply to all other lines (typically default)
-fn print_item_node_with_highlighted_first_line(item_node: &ItemNode, highlight: &Style, normal_style: &Style) {
-    let display_item_node = DisplayItemNode::new(
-        item_node,
-        Filter::Active,
-        DisplayFormat::MultiLineTree,
-    );
+fn print_item_node_with_highlighted_first_line(
+    item_node: &ItemNode,
+    highlight: &Style,
+    normal_style: &Style,
+) {
+    let display_item_node =
+        DisplayItemNode::new(item_node, Filter::Active, DisplayFormat::MultiLineTree);
     let display_item_node = format!("{}", display_item_node);
     let mut lines = display_item_node.lines();
     if let Some(first_line) = lines.next() {
@@ -266,7 +267,11 @@ pub(crate) async fn present_review_item_menu(
                 "{}Item Under Review and Selected Item:{}",
                 underline, normal_style
             );
-            print_item_node_with_highlighted_first_line(selected_item.get_item_node(), &highlight, &normal_style);
+            print_item_node_with_highlighted_first_line(
+                selected_item.get_item_node(),
+                &highlight,
+                &normal_style,
+            );
         } else {
             println!("{}Item Under Review:{}", underline, normal_style);
             println!(
@@ -279,7 +284,11 @@ pub(crate) async fn present_review_item_menu(
             );
             println!();
             println!("{}Selected Item:{}", underline, normal_style);
-            print_item_node_with_highlighted_first_line(selected_item.get_item_node(), &highlight, &normal_style);
+            print_item_node_with_highlighted_first_line(
+                selected_item.get_item_node(),
+                &highlight,
+                &normal_style,
+            );
         }
         println!();
 
