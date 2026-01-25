@@ -313,8 +313,12 @@ pub(crate) async fn present_review_item_menu(
                 )
                 .await
                 .unwrap();
-                //Go back to the parent item after updating relative importance
-                selected_item_id = parent.get_surreal_record_id().clone();
+                //Go back to the parent item after updating relative importance if that's where we came from
+                let previous = previously_selected_item_ids
+                    .pop_if(|peek| peek == parent.get_surreal_record_id());
+                if let Some(previous) = previous {
+                    selected_item_id = previous;
+                }
 
                 continue;
             }
