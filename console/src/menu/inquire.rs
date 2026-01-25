@@ -34,8 +34,8 @@ fn parse_exact_or_relative_datetime_help_string() -> &'static str {
     concat!(
         "Enter an exact time or a time relative to now. Examples:\n",
         "\"3:00pm\" or \"3pm\", for today at 3:00pm\n",
-        "\"Today 3pm\" or \"Day 3pm\" for today at 3:00pm\n",
-        "\"Tomorrow 3pm\", \"Next day 3pm\", or \"Next today 3pm\" for tomorrow at 3:00pm\n",
+        "\"Today 3pm\", \"Day 3pm\", or \"d 3pm\" for today at 3:00pm\n",
+        "\"Tomorrow 3pm\", \"Next day 3pm\", or \"Next today 3pm\" or \"next d 3pm\" for tomorrow at 3:00pm\n",
         "\"Next next day 3pm\" for the day after tomorrow at 3:00pm\n",
         "\"Mon 3:15pm\" for Monday of this week at 3:15pm\n",
         "\"next Mon 5pm\" for next week's Monday, and \"next next Mon 5pm\" for the Monday after that\n",
@@ -88,7 +88,7 @@ fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
             Err(_e) => {
                 lazy_static! {
                     // Allow repeating modifiers like "next next day" or "last last Mon".
-                    static ref RE: Regex = RegexBuilder::new(r"^\s*((?:(?:last|next)\s+)*)?(Monday|Mon|Tuesday|Tue|Wed|Wednesday|Thu|Thur|Thurs|Thursday|Fri|Friday|Sat|Saturday|Sun|Sunday|Tomorrow|Day|Today)\s*(([0-9]{1,2})(:[0-9]{2}(:[0-9]{2})?)?\s*(am|pm)?)?\s*$").case_insensitive(true).build().expect("Regex is valid");
+                    static ref RE: Regex = RegexBuilder::new(r"^\s*((?:(?:last|next)\s+)*)?(Monday|Mon|Tuesday|Tue|Wed|Wednesday|Thu|Thur|Thurs|Thursday|Fri|Friday|Sat|Saturday|Sun|Sunday|Tomorrow|Day|Today|D)\s*(([0-9]{1,2})(:[0-9]{2}(:[0-9]{2})?)?\s*(am|pm)?)?\s*$").case_insensitive(true).build().expect("Regex is valid");
                 }
                 if RE.is_match(input) {
                     let captures = RE.captures(input).unwrap();
@@ -131,7 +131,7 @@ fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
                             .case_insensitive(true)
                             .build()
                             .expect("Regex is valid");
-                        static ref TodayRE: Regex = RegexBuilder::new(r"^\s*(Day|Today)")
+                        static ref TodayRE: Regex = RegexBuilder::new(r"^\s*(Day|Today|D)")
                             .case_insensitive(true)
                             .build()
                             .expect("Regex is valid");
@@ -1610,15 +1610,44 @@ mod tests {
             )
         );
 
-        // "Day" is the base unit; "next Day" is tomorrow.
         assert_eq!(
-            parse_exact_or_relative_datetime("Day"),
+            parse_exact_or_relative_datetime("d 3pm"),
             Some(
                 Local
                     .from_local_datetime(
                         &Local::now()
                             .date_naive()
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("next d"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
                             .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("next d 3pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_add_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(15, 0, 0).unwrap())
                     )
                     .unwrap()
             )
