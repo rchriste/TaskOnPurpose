@@ -650,9 +650,14 @@ mod tests {
             surreal_tables::SurrealTablesBuilder,
         },
         menu::inquire::do_now_list_menu::InquireDoNowListItem,
-        node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
+        node::{item_status::ItemStatus, urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus},
         systems::do_now_list::current_mode::CurrentMode,
     };
+
+    /// Helper function to sort items by creation date (most recent first), matching the production code behavior
+    fn sort_items_by_created<'a>(items: &mut Vec<&'a ItemStatus<'a>>) {
+        items.sort_by(|a, b| b.get_created().cmp(a.get_created()));
+    }
 
     #[test]
     fn declare_event_not_shown_when_all_items_waiting_on_event_are_finished() {
@@ -760,7 +765,7 @@ mod tests {
 
         // Get items waiting on this event and sort them as the code does
         let mut items_waiting_on_this_event = event_node.get_waiting_on_this().to_vec();
-        items_waiting_on_this_event.sort_by(|a, b| b.get_created().cmp(a.get_created()));
+        sort_items_by_created(&mut items_waiting_on_this_event);
 
         // Verify the order: newest first, then middle, then oldest
         assert_eq!(items_waiting_on_this_event.len(), 3);
@@ -910,7 +915,7 @@ mod tests {
         let event_node = event_nodes.get(&event_id).expect("Event node should exist");
 
         let mut items_waiting_on_this_event = event_node.get_waiting_on_this().to_vec();
-        items_waiting_on_this_event.sort_by(|a, b| b.get_created().cmp(a.get_created()));
+        sort_items_by_created(&mut items_waiting_on_this_event);
 
         // Construct the EventTrigger list as the code does
         let list = chain!(
