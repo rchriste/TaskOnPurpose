@@ -1,5 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
+use better_term::{Color, Style};
 use chrono::Utc;
 use inquire::Select;
 use itertools::Itertools;
@@ -16,18 +17,19 @@ use crate::{
         DisplayStyle,
         display_dependencies_with_item_node::DisplayDependenciesWithItemNode,
         display_item::DisplayItem,
-        display_item_node::DisplayFormat,
-        display_item_status::DisplayItemStatus,
+        display_item_node::{DisplayFormat, DisplayItemNode},
         display_urgency_plan::{DisplayUrgency, DisplayUrgencyPlan},
     },
     menu::inquire::{
         default_select_page_size,
-        do_now_list_menu::do_now_list_single_item::{
-            give_this_item_a_parent::give_this_item_a_parent,
-            state_a_smaller_action::state_a_smaller_action,
-            urgency_plan::{AddOrRemove, prompt_for_dependencies, prompt_for_urgency_plan},
+        do_now_list_menu::{
+            do_now_list_single_item::{
+                give_this_item_a_parent::give_this_item_a_parent,
+                state_a_smaller_action::state_a_smaller_action,
+                urgency_plan::{AddOrRemove, prompt_for_dependencies, prompt_for_urgency_plan},
+            },
+            pick_item_review_frequency::present_pick_item_review_frequency_menu,
         },
-        do_now_list_menu::pick_item_review_frequency::present_pick_item_review_frequency_menu,
         select_higher_importance_than_this::select_higher_importance_than_this,
     },
     node::{
@@ -40,24 +42,12 @@ use ahash::HashMap;
 
 enum ReviewItemMenuChoices<'e> {
     DoneWithReview,
-    UpdateRelativeImportanceDontShowSingleParent {
-        parent: &'e Item<'e>,
-    },
-    UpdateRelativeImportanceShowParent {
-        parent: &'e Item<'e>,
-    },
-    UpdateDependencies {
-        current_item: &'e ItemStatus<'e>,
-    },
-    UpdateUrgencyPlan {
-        current_item: &'e ItemStatus<'e>,
-    },
-    UpdateReviewFrequency {
-        current_item: &'e ItemStatus<'e>,
-    },
-    FinishThisItem {
-        previously_selected_item_id: RecordId,
-    },
+    UpdateRelativeImportanceDontShowSingleParent { parent: &'e Item<'e> },
+    UpdateRelativeImportanceShowParent { parent: &'e Item<'e> },
+    UpdateDependencies { current_item: &'e ItemStatus<'e> },
+    UpdateUrgencyPlan { current_item: &'e ItemStatus<'e> },
+    UpdateReviewFrequency { current_item: &'e ItemStatus<'e> },
+    FinishThisItem,
     AddNewParent,
     AddNewChild,
     GoToParent(&'e Item<'e>),
@@ -157,7 +147,6 @@ impl Display for ReviewItemMenuChoices<'_> {
 impl ReviewItemMenuChoices<'_> {
     pub(crate) fn make_list<'e>(
         current_item: &'e ItemStatus<'e>,
-        previously_selected_item: &'e ItemStatus<'e>,
         all_items: &'e HashMap<&'e RecordId, ItemStatus<'e>>,
     ) -> Vec<ReviewItemMenuChoices<'e>> {
         let mut list = vec![ReviewItemMenuChoices::DoneWithReview];
@@ -189,9 +178,7 @@ impl ReviewItemMenuChoices<'_> {
         list.push(ReviewItemMenuChoices::UpdateUrgencyPlan { current_item });
         list.push(ReviewItemMenuChoices::UpdateReviewFrequency { current_item });
         list.push(ReviewItemMenuChoices::UpdateDependencies { current_item });
-        list.push(ReviewItemMenuChoices::FinishThisItem {
-            previously_selected_item_id: previously_selected_item.get_surreal_record_id().clone(),
-        });
+        list.push(ReviewItemMenuChoices::FinishThisItem);
         list.push(ReviewItemMenuChoices::AddNewParent);
 
         for parent in current_item.get_item_node().get_parents(Filter::Active) {
@@ -225,7 +212,7 @@ pub(crate) async fn present_review_item_menu(
 ) -> Result<(), ()> {
     let item_under_review_id = item_status.get_surreal_record_id().clone();
     let mut selected_item_id = item_under_review_id.clone();
-    let mut will_be_previously_selected_item_id = item_status.get_surreal_record_id().clone();
+    let mut previously_selected_item_ids = Vec::<RecordId>::default();
 
     loop {
         let surreal_tables = SurrealTables::new(send_to_data_storage_layer)
@@ -240,16 +227,62 @@ pub(crate) async fn present_review_item_menu(
         let item_under_review = all_items
             .get(&item_under_review_id)
             .expect("Item under review must be in the list of all items");
-        let previously_selected_item = all_items
-            .get(&will_be_previously_selected_item_id)
-            .unwrap_or(item_under_review);
-        will_be_previously_selected_item_id = selected_item_id.clone();
         let selected_item = all_items
             .get(&selected_item_id)
             .expect("Selected item must be in the list of all items");
 
-        let choices =
-            ReviewItemMenuChoices::make_list(selected_item, previously_selected_item, all_items);
+        let underline = Style::default().underline();
+        let normal_style = Style::default();
+        let highlight = Style::default().fg(Color::BrightGreen);
+        println!();
+        println!();
+        if item_under_review_id == selected_item_id {
+            println!(
+                "{}Item Under Review and Selected Item:{}",
+                underline, normal_style
+            );
+            let display_item_node = DisplayItemNode::new(
+                selected_item.get_item_node(),
+                Filter::Active,
+                DisplayFormat::MultiLineTree,
+            );
+            let display_item_node = format!("{}", display_item_node);
+            let mut lines = display_item_node.lines();
+            if let Some(first_line) = lines.next() {
+                println!("{}{}{}", highlight, first_line, normal_style);
+            }
+            for line in lines {
+                println!("{}", line);
+            }
+        } else {
+            println!("{}Item Under Review:{}", underline, normal_style);
+            println!(
+                "{}",
+                DisplayItemNode::new(
+                    item_under_review.get_item_node(),
+                    Filter::Active,
+                    DisplayFormat::MultiLineTree
+                )
+            );
+            println!();
+            println!("{}Selected Item:{}", underline, normal_style);
+            let display_item_node = DisplayItemNode::new(
+                selected_item.get_item_node(),
+                Filter::Active,
+                DisplayFormat::MultiLineTree,
+            );
+            let display_item_node = format!("{}", display_item_node);
+            let mut lines = display_item_node.lines();
+            if let Some(first_line) = lines.next() {
+                println!("{}{}{}", highlight, first_line, normal_style);
+            }
+            for line in lines {
+                println!("{}", line);
+            }
+        }
+        println!();
+
+        let choices = ReviewItemMenuChoices::make_list(selected_item, all_items);
         let selected = Select::new("What would you like to do with this item?", choices)
             .with_page_size(default_select_page_size())
             .prompt()
@@ -355,9 +388,7 @@ pub(crate) async fn present_review_item_menu(
 
                 continue;
             }
-            ReviewItemMenuChoices::FinishThisItem {
-                previously_selected_item_id,
-            } => {
+            ReviewItemMenuChoices::FinishThisItem => {
                 let when_finished: Datetime = (Utc::now()).into();
                 send_to_data_storage_layer
                     .send(DataLayerCommands::FinishItem {
@@ -370,14 +401,9 @@ pub(crate) async fn present_review_item_menu(
                 if selected_item.get_item() == item_under_review.get_item() {
                     return Ok(());
                 } else {
-                    println!("Item finished, going back to the previously selected item:");
-                    let display_item = DisplayItemStatus::new(
-                        item_under_review,
-                        Filter::Active,
-                        DisplayFormat::SingleLine,
-                    );
-                    println!("{}", display_item);
-                    selected_item_id = previously_selected_item_id;
+                    selected_item_id = previously_selected_item_ids
+                        .pop()
+                        .unwrap_or_else(|| item_under_review_id.clone());
                     continue;
                 }
             }
@@ -400,6 +426,7 @@ pub(crate) async fn present_review_item_menu(
                 continue;
             }
             ReviewItemMenuChoices::GoToParent(item) => {
+                previously_selected_item_ids.push(selected_item_id.clone());
                 selected_item_id = item.get_surreal_record_id().clone();
                 continue;
             }
@@ -415,6 +442,7 @@ pub(crate) async fn present_review_item_menu(
                 continue;
             }
             ReviewItemMenuChoices::GoToChild(item_status) => {
+                previously_selected_item_ids.push(selected_item_id.clone());
                 selected_item_id = item_status.get_surreal_record_id().clone();
                 continue;
             }
