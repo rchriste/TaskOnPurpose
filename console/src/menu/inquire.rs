@@ -35,7 +35,7 @@ fn parse_exact_or_relative_datetime_help_string() -> &'static str {
         "Enter an exact time or a time relative to now. Examples:\n",
         "\"3:00pm\" or \"3pm\", for today at 3:00pm\n",
         "\"Today 3pm\", \"Day 3pm\", or \"d 3pm\" for today at 3:00pm\n",
-        "\"Tomorrow 3pm\", \"Next day 3pm\", or \"Next today 3pm\" or \"next d 3pm\" for tomorrow at 3:00pm\n",
+        "\"Tomorrow 3pm\", \"Next day 3pm\", or \"Next today 3pm\" or \"next d 3pm\", for tomorrow at 3:00pm\n",
         "\"Next next day 3pm\" for the day after tomorrow at 3:00pm\n",
         "\"Mon 3:15pm\" for Monday of this week at 3:15pm\n",
         "\"next Mon 5pm\" for next week's Monday, and \"next next Mon 5pm\" for the Monday after that\n",
