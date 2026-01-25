@@ -88,6 +88,17 @@ fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
             Err(_e) => {
                 lazy_static! {
                     // Allow repeating modifiers like "next next day" or "last last Mon".
+                    //
+                    // NOTE ON PARSING ORDER AND "d"/"D":
+                    // - The relative duration parser above already treats "d" as an alias for "day",
+                    //   so inputs like "1d" are parsed as "1 day from now" there.
+                    // - This regex is only consulted after the duration parser fails, and it treats
+                    //   "D"/"Day"/"Today"/"Tomorrow" (case-insensitive) as special tokens.
+                    // - As a result, "d" on its own does *not* match the duration parser and instead
+                    //   reaches this regex, where it is interpreted as "today", while "1d" continues
+                    //   to mean "1 day from now".
+                    // This overlapping use of "d" is intentional; please keep this behavior in mind
+                    // if you modify either the duration units or this pattern.
                     static ref RE: Regex = RegexBuilder::new(r"^\s*((?:(?:last|next)\s+)*)?(Monday|Mon|Tuesday|Tue|Wed|Wednesday|Thu|Thur|Thurs|Thursday|Fri|Friday|Sat|Saturday|Sun|Sunday|Tomorrow|Day|Today|D)\s*(([0-9]{1,2})(:[0-9]{2}(:[0-9]{2})?)?\s*(am|pm)?)?\s*$").case_insensitive(true).build().expect("Regex is valid");
                 }
                 if RE.is_match(input) {
