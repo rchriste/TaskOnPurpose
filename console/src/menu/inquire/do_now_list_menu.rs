@@ -406,8 +406,7 @@ pub(crate) async fn present_do_now_list_menu(
                         let mut items_waiting_on_this_event: Vec<&ItemStatus<'_>> =
                             event_node.get_waiting_on_this().to_vec();
                         //Order the list so it is the same each time you look at it and put the most recently created items at the top of the list
-                        items_waiting_on_this_event
-                            .sort_by(|a, b| b.get_created().cmp(a.get_created()));
+                        sort_items_by_created(&mut items_waiting_on_this_event);
                         let list = chain!(
                             once(EventTrigger::ReturnToDoNowList),
                             once(EventTrigger::TriggerEvent {
@@ -616,6 +615,11 @@ pub(crate) fn present_do_now_help() -> Result<(), ()> {
     }
 }
 
+/// Helper function to sort items by creation date (most recent first), matching the production code behavior
+fn sort_items_by_created<'a>(items: &mut Vec<&'a ItemStatus<'a>>) {
+    items.sort_by(|a, b| b.get_created().cmp(a.get_created()));
+}
+
 pub(crate) fn present_do_now_help_getting_started() -> Result<(), ()> {
     println!();
     println!("Getting Started Help Coming Soon!");
@@ -649,15 +653,10 @@ mod tests {
             surreal_item::{SurrealDependency, SurrealItemBuilder, SurrealItemType},
             surreal_tables::SurrealTablesBuilder,
         },
-        menu::inquire::do_now_list_menu::InquireDoNowListItem,
-        node::{item_status::ItemStatus, urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus},
+        menu::inquire::do_now_list_menu::{InquireDoNowListItem, sort_items_by_created},
+        node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
         systems::do_now_list::current_mode::CurrentMode,
     };
-
-    /// Helper function to sort items by creation date (most recent first), matching the production code behavior
-    fn sort_items_by_created<'a>(items: &mut Vec<&'a ItemStatus<'a>>) {
-        items.sort_by(|a, b| b.get_created().cmp(a.get_created()));
-    }
 
     #[test]
     fn declare_event_not_shown_when_all_items_waiting_on_event_are_finished() {
