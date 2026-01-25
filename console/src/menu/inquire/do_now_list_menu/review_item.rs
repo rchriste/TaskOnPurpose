@@ -206,7 +206,15 @@ impl ReviewItemMenuChoices<'_> {
     }
 }
 
-/// Helper function to render an ItemNode with the first line highlighted
+/// Helper function to render an ItemNode with the first line highlighted.
+///
+/// Displays the given ItemNode in a MultiLineTree format with the first line
+/// highlighted in the specified color and the remaining lines in normal style.
+///
+/// # Arguments
+/// * `item_node` - The ItemNode to render
+/// * `highlight` - Style to apply to the first line (typically bright green)
+/// * `normal_style` - Style to apply to all other lines (typically default)
 fn print_item_node_with_highlighted_first_line(item_node: &ItemNode, highlight: &Style, normal_style: &Style) {
     let display_item_node = DisplayItemNode::new(
         item_node,
