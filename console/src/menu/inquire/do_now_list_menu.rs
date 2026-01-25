@@ -177,31 +177,7 @@ impl<'a> InquireDoNowListItem<'a> {
 pub(crate) async fn present_normal_do_now_list_menu(
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
-    let before_db_query = Local::now();
-    let surreal_tables = SurrealTables::new(send_to_data_storage_layer)
-        .await
-        .unwrap();
-    let elapsed = Local::now() - before_db_query;
-    if elapsed > chrono::Duration::try_seconds(1).expect("valid") {
-        println!("Slow to get data from database. Time taken: {}", elapsed);
-    }
-    let now = Utc::now();
-    let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
-    let base_data_checkpoint = Utc::now();
-    let calculated_data = CalculatedData::new_from_base_data(base_data);
-    let calculated_data_checkpoint = Utc::now();
-    let do_now_list = DoNowList::new_do_now_list(calculated_data, &now);
-    let finish_checkpoint = Utc::now();
-    let elapsed = finish_checkpoint - now;
-    if elapsed > chrono::Duration::try_seconds(1).expect("valid") {
-        println!("Slow to create do now list. Time taken: {}", elapsed);
-        println!(
-            "Base data took: {}, calculated data took: {}, do now list took: {}",
-            base_data_checkpoint - now,
-            calculated_data_checkpoint - base_data_checkpoint,
-            finish_checkpoint - calculated_data_checkpoint
-        );
-    }
+    let do_now_list = load_do_now_list_from_db(send_to_data_storage_layer).await;
     // If the user previously said they're currently working on an item, resume directly into
     // that single-item view instead of showing the main list.
     if let Some(working_on) = do_now_list.get_base_data().get_surreal_working_on() {
@@ -244,7 +220,41 @@ pub(crate) async fn present_normal_do_now_list_menu(
     }
 
     present_upcoming(&do_now_list);
-    present_do_now_list_menu(&do_now_list, now, send_to_data_storage_layer).await
+    present_do_now_list_menu(do_now_list, send_to_data_storage_layer).await
+}
+
+async fn load_do_now_list_from_db(
+    send_to_data_storage_layer: &Sender<DataLayerCommands>,
+) -> DoNowList {
+    let before_db_query = Local::now();
+    let surreal_tables = SurrealTables::new(send_to_data_storage_layer)
+        .await
+        .unwrap();
+    let elapsed = Local::now() - before_db_query;
+    if elapsed > chrono::Duration::try_seconds(1).expect("valid") {
+        println!("Slow to get data from database. Time taken: {}", elapsed);
+    }
+
+    let now = Utc::now();
+    let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+    let base_data_checkpoint = Utc::now();
+    let calculated_data = CalculatedData::new_from_base_data(base_data);
+    let calculated_data_checkpoint = Utc::now();
+    let do_now_list = DoNowList::new_do_now_list(calculated_data, &now);
+
+    let finish_checkpoint = Utc::now();
+    let elapsed = finish_checkpoint - now;
+    if elapsed > chrono::Duration::try_seconds(1).expect("valid") {
+        println!("Slow to create do now list. Time taken: {}", elapsed);
+        println!(
+            "Base data took: {}, calculated data took: {}, do now list took: {}",
+            base_data_checkpoint - now,
+            calculated_data_checkpoint - base_data_checkpoint,
+            finish_checkpoint - calculated_data_checkpoint
+        );
+    }
+
+    do_now_list
 }
 
 pub(crate) fn present_upcoming(do_now_list: &DoNowList) {
@@ -275,17 +285,20 @@ pub(crate) fn present_upcoming(do_now_list: &DoNowList) {
     }
 }
 
-enum EventSelection<'e> {
+enum EventSelection {
     ReturnToDoNowList,
-    Event(&'e EventNode<'e>),
+    Event { event_id: RecordId, summary: String },
 }
 
-impl Display for EventSelection<'_> {
+impl Display for EventSelection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EventSelection::ReturnToDoNowList => write!(f, "🔙 Return to Do Now List"),
-            EventSelection::Event(event_node) => {
-                write!(f, "{}", event_node.get_summary())
+            EventSelection::Event {
+                event_id: _,
+                summary,
+            } => {
+                write!(f, "{}", summary)
             }
         }
     }
@@ -316,8 +329,7 @@ impl Display for EventTrigger<'_> {
 }
 
 pub(crate) async fn present_do_now_list_menu(
-    do_now_list: &DoNowList,
-    do_now_list_created: DateTime<Utc>,
+    mut do_now_list: DoNowList,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     let ordered_do_now_list = do_now_list.get_ordered_do_now_list();
@@ -326,7 +338,7 @@ pub(crate) async fn present_do_now_list_menu(
     let inquire_do_now_list = InquireDoNowListItem::create_list(
         ordered_do_now_list,
         event_nodes,
-        do_now_list_created,
+        *do_now_list.get_now(),
         do_now_list.get_current_mode(),
     );
 
@@ -352,7 +364,7 @@ pub(crate) async fn present_do_now_list_menu(
         Ok(InquireDoNowListItem::Help) => present_do_now_help(),
         Ok(InquireDoNowListItem::CaptureNewItem) => capture(send_to_data_storage_layer).await,
         Ok(InquireDoNowListItem::Search) => {
-            present_search_menu(do_now_list, send_to_data_storage_layer).await
+            present_search_menu(&do_now_list, send_to_data_storage_layer).await
         }
         Ok(InquireDoNowListItem::ChangeMode(current_mode)) => {
             present_change_mode_menu(current_mode, send_to_data_storage_layer).await
@@ -361,75 +373,108 @@ pub(crate) async fn present_do_now_list_menu(
             waiting_on.sort_by(|a, b| b.get_last_updated().cmp(a.get_last_updated()));
             let list = chain!(
                 once(EventSelection::ReturnToDoNowList),
-                waiting_on.into_iter().map(EventSelection::Event)
+                waiting_on.into_iter().map(|a| EventSelection::Event {
+                    event_id: a.get_surreal_record_id().clone(),
+                    summary: a.get_summary().to_string()
+                })
             )
             .collect::<Vec<_>>();
             let selected = Select::new("Select the event that just happened|", list)
                 .with_page_size(default_select_page_size())
                 .prompt();
             match selected {
-                Ok(EventSelection::Event(event_node)) => {
-                    let items_waiting_on_this_event = event_node.get_waiting_on_this();
-                    let list = chain!(
-                        once(EventTrigger::ReturnToDoNowList),
-                        once(EventTrigger::TriggerEvent {
-                            all_items_waiting_on_event: items_waiting_on_this_event.to_vec()
-                        }),
+                Ok(EventSelection::Event {
+                    event_id,
+                    summary: _,
+                }) => {
+                    // Keep the user in the event-dependent-items list after working on an item.
+                    // Rebuild the list from the database each time so removed dependencies/items
+                    // don't show up stale.
+                    loop {
+                        let event_node = do_now_list.get_event_nodes().get(&event_id);
+
+                        let Some(event_node) = event_node else {
+                            // Event no longer exists (or no longer loaded). Exit back to Do Now list.
+                            break Ok(());
+                        };
+
+                        // If nothing is waiting on this event anymore, return to the Do Now list.
+                        if !event_node.is_active() {
+                            break Ok(());
+                        }
+
+                        let mut items_waiting_on_this_event: Vec<&ItemStatus<'_>> =
+                            event_node.get_waiting_on_this().to_vec();
+                        //Order the list so it is the same each time you look at it and put the most recently created items at the top of the list
                         items_waiting_on_this_event
-                            .iter()
-                            .copied()
-                            .map(EventTrigger::ItemDependentOnThisEvent)
-                    )
-                    .collect::<Vec<_>>();
-                    let selected = Select::new(
-                        "Clear event or select an item that is dependent on this event|",
-                        list,
-                    )
-                    .with_page_size(default_select_page_size())
-                    .prompt();
-                    match selected {
-                        Ok(EventTrigger::TriggerEvent {
-                            all_items_waiting_on_event,
-                        }) => {
-                            //Clear the event before clearing the trigger in case it is cancelled part way through
-                            for item_waiting_on_event in all_items_waiting_on_event {
+                            .sort_by(|a, b| b.get_created().cmp(a.get_created()));
+                        let list = chain!(
+                            once(EventTrigger::ReturnToDoNowList),
+                            once(EventTrigger::TriggerEvent {
+                                all_items_waiting_on_event: items_waiting_on_this_event.clone()
+                            }),
+                            items_waiting_on_this_event
+                                .iter()
+                                .copied()
+                                .map(EventTrigger::ItemDependentOnThisEvent)
+                        )
+                        .collect::<Vec<_>>();
+
+                        let selected = Select::new(
+                            "Clear event or select an item that is dependent on this event|",
+                            list,
+                        )
+                        .with_page_size(default_select_page_size())
+                        .prompt();
+
+                        match selected {
+                            Ok(EventTrigger::TriggerEvent {
+                                all_items_waiting_on_event,
+                            }) => {
+                                // Clear the items' event dependency before triggering the event.
+                                // (Clear dependency first in case triggering is canceled part way through.)
+                                for item_waiting_on_event in all_items_waiting_on_event {
+                                    send_to_data_storage_layer
+                                        .send(DataLayerCommands::RemoveItemDependency(
+                                            item_waiting_on_event.get_surreal_record_id().clone(),
+                                            SurrealDependency::AfterEvent(event_id.clone()),
+                                        ))
+                                        .await
+                                        .unwrap();
+                                }
                                 send_to_data_storage_layer
-                                    .send(DataLayerCommands::RemoveItemDependency(
-                                        item_waiting_on_event.get_surreal_record_id().clone(),
-                                        SurrealDependency::AfterEvent(
-                                            event_node.get_surreal_record_id().clone(),
-                                        ),
-                                    ))
+                                    .send(DataLayerCommands::TriggerEvent {
+                                        event: event_id.clone(),
+                                        when: Utc::now().into(),
+                                    })
                                     .await
                                     .unwrap();
+                                break Ok(());
                             }
-                            send_to_data_storage_layer
-                                .send(DataLayerCommands::TriggerEvent {
-                                    event: event_node.get_surreal_record_id().clone(),
-                                    when: Utc::now().into(),
-                                })
-                                .await
-                                .unwrap();
-                            Ok(())
+                            Ok(EventTrigger::ItemDependentOnThisEvent(item_status)) => {
+                                let mut why_in_scope = HashSet::default();
+                                why_in_scope.insert(WhyInScope::MenuNavigation);
+
+                                // After returning, loop back to this event list (but refreshed).
+                                Box::pin(present_do_now_list_item_selected(
+                                    item_status,
+                                    &why_in_scope,
+                                    Utc::now(),
+                                    &do_now_list,
+                                    send_to_data_storage_layer,
+                                ))
+                                .await?;
+                            }
+                            Ok(EventTrigger::ReturnToDoNowList)
+                            | Err(InquireError::OperationCanceled) => break Ok(()),
+                            Err(InquireError::OperationInterrupted) => break Err(()),
+                            Err(err) => {
+                                panic!("Unexpected error, try restarting the terminal: {}", err)
+                            }
                         }
-                        Ok(EventTrigger::ItemDependentOnThisEvent(item_status)) => {
-                            let mut why_in_scope = HashSet::default();
-                            why_in_scope.insert(WhyInScope::MenuNavigation);
-                            Box::pin(present_do_now_list_item_selected(
-                                item_status,
-                                &why_in_scope,
-                                Utc::now(),
-                                do_now_list,
-                                send_to_data_storage_layer,
-                            ))
-                            .await
-                        }
-                        Ok(EventTrigger::ReturnToDoNowList)
-                        | Err(InquireError::OperationCanceled) => Ok(()),
-                        Err(InquireError::OperationInterrupted) => Err(()),
-                        Err(err) => {
-                            panic!("Unexpected error, try restarting the terminal: {}", err)
-                        }
+                        //Refresh the data for the next time around the loop so changes made by the user are reflected in the list
+
+                        do_now_list = load_do_now_list_from_db(send_to_data_storage_layer).await;
                     }
                 }
                 Ok(EventSelection::ReturnToDoNowList) | Err(InquireError::OperationCanceled) => {
@@ -444,7 +489,7 @@ pub(crate) async fn present_do_now_list_menu(
                 Box::pin(
                     pick_what_should_be_done_first::priority_wizard::priority_wizard_loop(
                         choices,
-                        do_now_list,
+                        &do_now_list,
                         send_to_data_storage_layer,
                     ),
                 )
@@ -484,7 +529,7 @@ pub(crate) async fn present_do_now_list_menu(
                                 item_status,
                                 why_in_scope,
                                 Utc::now(),
-                                do_now_list,
+                                &do_now_list,
                                 send_to_data_storage_layer,
                             ))
                             .await

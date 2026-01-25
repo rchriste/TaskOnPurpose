@@ -540,6 +540,10 @@ impl<'s> ItemStatus<'s> {
                 })),
         )
     }
+
+    pub(crate) fn get_created(&self) -> &DateTime<Utc> {
+        self.get_item_node().get_created()
+    }
 }
 
 fn calculate_dependencies<'s>(
