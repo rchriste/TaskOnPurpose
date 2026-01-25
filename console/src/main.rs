@@ -19,6 +19,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use better_term::Style;
 use crossterm::terminal::{Clear, ClearType};
 use icy_sixel::{EncodeOptions, QuantizeMethod, sixel_encode};
 use image::{
@@ -250,8 +251,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     const CARGO_PKG_VERSION: Option<&'static str> = option_env!("CARGO_PKG_VERSION");
 
-    println!("Welcome to 🕜 Task On Purpose 🕜");
-    println!("Version {}", CARGO_PKG_VERSION.unwrap_or("UNKNOWN"));
+    println!(
+        "{}Welcome to 🕜 Task On Purpose 🕜{}",
+        Style::default().bold(),
+        Style::default()
+    );
+    println!(
+        "{}Version {}{}",
+        Style::default().italic(),
+        CARGO_PKG_VERSION.unwrap_or("UNKNOWN"),
+        Style::default()
+    );
+    println!();
 
     let commands_in_flight_limit = 20;
     let (send_to_data_storage_layer_tx, have_data_storage_layer_use_to_receive_rx) =

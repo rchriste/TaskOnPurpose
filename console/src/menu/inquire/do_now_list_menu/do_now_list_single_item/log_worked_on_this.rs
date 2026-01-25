@@ -60,10 +60,6 @@ pub(crate) async fn log_worked_on_this(
         .await
         .unwrap();
 
-    send_to_data_storage_layer
-        .send(DataLayerCommands::ClearWorkingOn)
-        .await
-        .unwrap();
     Ok(())
 }
 
