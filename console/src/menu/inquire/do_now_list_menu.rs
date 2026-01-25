@@ -223,7 +223,7 @@ pub(crate) async fn present_normal_do_now_list_menu(
     present_do_now_list_menu(do_now_list, send_to_data_storage_layer).await
 }
 
-async fn load_do_now_list_from_db(
+pub(crate) async fn load_do_now_list_from_db(
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> DoNowList {
     let before_db_query = Local::now();
