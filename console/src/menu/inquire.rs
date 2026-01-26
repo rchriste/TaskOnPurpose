@@ -1890,14 +1890,13 @@ mod tests {
     #[test]
     fn test_parse_exact_or_relative_datetime_yesterday_patterns() {
         let now = Local::now();
-        
+
         assert_eq!(
             parse_exact_or_relative_datetime("yesterday"),
             Some(
                 Local
                     .from_local_datetime(
-                        &now
-                            .date_naive()
+                        &now.date_naive()
                             .checked_sub_days(Days::new(1))
                             .expect("Test failure")
                             .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
@@ -1911,8 +1910,7 @@ mod tests {
             Some(
                 Local
                     .from_local_datetime(
-                        &now
-                            .date_naive()
+                        &now.date_naive()
                             .checked_sub_days(Days::new(1))
                             .expect("Test failure")
                             .and_time(NaiveTime::from_hms_opt(22, 0, 0).unwrap())
@@ -1926,8 +1924,7 @@ mod tests {
             Some(
                 Local
                     .from_local_datetime(
-                        &now
-                            .date_naive()
+                        &now.date_naive()
                             .checked_sub_days(Days::new(1))
                             .expect("Test failure")
                             .and_time(NaiveTime::from_hms_opt(9, 0, 0).unwrap())
