@@ -35,6 +35,7 @@ fn parse_exact_or_relative_datetime_help_string() -> &'static str {
         "Enter an exact time or a time relative to now. Examples:\n",
         "\"3:00pm\" or \"3pm\", for today at 3:00pm\n",
         "\"Today 3pm\", \"Day 3pm\", or \"d 3pm\" for today at 3:00pm\n",
+        "\"Yesterday 10pm\" for yesterday at 10:00pm\n",
         "\"Tomorrow 3pm\", \"Next day 3pm\", or \"Next today 3pm\" or \"next d 3pm\", for tomorrow at 3:00pm\n",
         "\"Next next day 3pm\" for the day after tomorrow at 3:00pm\n",
         "\"Mon 3:15pm\" for Monday of this week at 3:15pm\n",
@@ -93,13 +94,13 @@ fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
                     // - The relative duration parser above already treats "d" as an alias for "day",
                     //   so inputs like "1d" are parsed as "1 day from now" there.
                     // - This regex is only consulted after the duration parser fails, and it treats
-                    //   "D"/"Day"/"Today"/"Tomorrow" (case-insensitive) as special tokens.
+                    //   "D"/"Day"/"Today"/"Tomorrow"/"Yesterday" (case-insensitive) as special tokens.
                     // - As a result, "d" on its own does *not* match the duration parser and instead
                     //   reaches this regex, where it is interpreted as "today", while "1d" continues
                     //   to mean "1 day from now".
                     // This overlapping use of "d" is intentional; please keep this behavior in mind
                     // if you modify either the duration units or this pattern.
-                    static ref RE: Regex = RegexBuilder::new(r"^\s*((?:(?:last|next)\s+)*)?(Monday|Mon|Tuesday|Tue|Wed|Wednesday|Thu|Thur|Thurs|Thursday|Fri|Friday|Sat|Saturday|Sun|Sunday|Tomorrow|Day|Today|D)\s*(([0-9]{1,2})(:[0-9]{2}(:[0-9]{2})?)?\s*(am|pm)?)?\s*$").case_insensitive(true).build().expect("Regex is valid");
+                    static ref RE: Regex = RegexBuilder::new(r"^\s*((?:(?:last|next)\s+)*)?(Monday|Mon|Tuesday|Tue|Wed|Wednesday|Thu|Thur|Thurs|Thursday|Fri|Friday|Sat|Saturday|Sun|Sunday|Yesterday|Tomorrow|Day|Today|D)\s*(([0-9]{1,2})(:[0-9]{2}(:[0-9]{2})?)?\s*(am|pm)?)?\s*$").case_insensitive(true).build().expect("Regex is valid");
                 }
                 if RE.is_match(input) {
                     let captures = RE.captures(input).unwrap();
@@ -138,6 +139,10 @@ fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
                             .case_insensitive(true)
                             .build()
                             .expect("Regex is valid");
+                        static ref YesterdayRE: Regex = RegexBuilder::new(r"^\s*Yesterday")
+                            .case_insensitive(true)
+                            .build()
+                            .expect("Regex is valid");
                         static ref TomorrowRE: Regex = RegexBuilder::new(r"^\s*Tomorrow")
                             .case_insensitive(true)
                             .build()
@@ -164,6 +169,8 @@ fn parse_exact_or_relative_datetime(input: &str) -> Option<DateTime<Local>> {
                         now.date_naive() - Duration::days(days_since_sunday) + Duration::days(6)
                     } else if SundayRE.is_match(day_of_the_week) {
                         now.date_naive() - Duration::days(days_since_sunday) + Duration::days(0)
+                    } else if YesterdayRE.is_match(day_of_the_week) {
+                        now.date_naive() - Duration::days(1)
                     } else if TomorrowRE.is_match(day_of_the_week) {
                         now.date_naive() + Duration::days(1)
                     } else if TodayRE.is_match(day_of_the_week) {
@@ -1874,6 +1881,54 @@ mod tests {
                             .checked_sub_days(Days::new(1))
                             .expect("Test failure")
                             .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+    }
+
+    #[test]
+    fn test_parse_exact_or_relative_datetime_yesterday_patterns() {
+        assert_eq!(
+            parse_exact_or_relative_datetime("yesterday"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(0, 0, 0).expect("Test failure"))
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("yesterday 10pm"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(22, 0, 0).unwrap())
+                    )
+                    .unwrap()
+            )
+        );
+
+        assert_eq!(
+            parse_exact_or_relative_datetime("YESTERDAY 9:00am"),
+            Some(
+                Local
+                    .from_local_datetime(
+                        &Local::now()
+                            .date_naive()
+                            .checked_sub_days(Days::new(1))
+                            .expect("Test failure")
+                            .and_time(NaiveTime::from_hms_opt(9, 0, 0).unwrap())
                     )
                     .unwrap()
             )
