@@ -42,6 +42,7 @@ use ahash::HashMap;
 
 enum ReviewItemMenuChoices<'e> {
     DoneWithReview,
+    ReturnToReviewItem,
     UpdateRelativeImportanceDontShowSingleParent { parent: &'e Item<'e> },
     UpdateRelativeImportanceShowParent { parent: &'e Item<'e> },
     UpdateDependencies { current_item: &'e ItemStatus<'e> },
@@ -60,6 +61,7 @@ impl Display for ReviewItemMenuChoices<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ReviewItemMenuChoices::DoneWithReview => write!(f, "Done with this review"),
+            ReviewItemMenuChoices::ReturnToReviewItem => write!(f, "Return to item under review"),
             ReviewItemMenuChoices::UpdateRelativeImportanceDontShowSingleParent { .. } => {
                 write!(f, "Update relative importance of this item")
             }
@@ -146,10 +148,17 @@ impl Display for ReviewItemMenuChoices<'_> {
 
 impl ReviewItemMenuChoices<'_> {
     pub(crate) fn make_list<'e>(
+        item_under_review: &'e ItemStatus<'e>,
         current_item: &'e ItemStatus<'e>,
         all_items: &'e HashMap<&'e RecordId, ItemStatus<'e>>,
     ) -> Vec<ReviewItemMenuChoices<'e>> {
-        let mut list = vec![ReviewItemMenuChoices::DoneWithReview];
+        let mut list = Vec::default();
+
+        if item_under_review == current_item {
+            list.push(ReviewItemMenuChoices::DoneWithReview)
+        } else {
+            list.push(ReviewItemMenuChoices::ReturnToReviewItem)
+        }
 
         if current_item
             .get_item_node()
@@ -292,7 +301,7 @@ pub(crate) async fn present_review_item_menu(
         }
         println!();
 
-        let choices = ReviewItemMenuChoices::make_list(selected_item, all_items);
+        let choices = ReviewItemMenuChoices::make_list(item_under_review, selected_item, all_items);
         let selected = Select::new("What would you like to do with this item?", choices)
             .with_page_size(default_select_page_size())
             .prompt()
@@ -309,6 +318,12 @@ pub(crate) async fn present_review_item_menu(
                     .unwrap();
 
                 return Ok(());
+            }
+            ReviewItemMenuChoices::ReturnToReviewItem => {
+                previously_selected_item_ids.clear();
+                selected_item_id = item_under_review_id.clone();
+
+                continue;
             }
             ReviewItemMenuChoices::UpdateRelativeImportanceDontShowSingleParent { parent }
             | ReviewItemMenuChoices::UpdateRelativeImportanceShowParent { parent } => {
