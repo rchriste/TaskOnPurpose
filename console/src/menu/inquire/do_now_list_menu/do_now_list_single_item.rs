@@ -150,7 +150,8 @@ impl<'e> DoNowListSingleItemSelection<'e> {
         item_node: &'e ItemNode<'e>,
         all_items_status: &'e HashMap<&'e RecordId, ItemStatus<'e>>,
         currently_working_on_item: Option<&'e SurrealWorkingOn>,
-    ) -> Vec<Self> {
+    ) -> (Vec<Self>, usize) {
+        let mut default_item = 0;
         //if the currently_working_on_item is not this item then blank it out that we are not working on it
         let currently_working_on_item = currently_working_on_item.and_then(|working_on_item| {
             if &working_on_item.item == item_node.get_surreal_record_id() {
@@ -163,21 +164,21 @@ impl<'e> DoNowListSingleItemSelection<'e> {
 
         let has_no_parent = !item_node.has_parents(Filter::Active);
 
+        list.push(Self::CaptureNewItem);
+
         if has_no_parent {
             list.push(Self::GiveThisItemAParent);
+            default_item = 1;
+        } else if currently_working_on_item.is_none() {
+            list.push(Self::StartWorkingOnThis);
+            default_item = 1;
         }
-
-        list.push(Self::CaptureNewItem);
 
         list.push(Self::WorkedOnThis {
             started: currently_working_on_item,
         });
 
         list.push(Self::Finished);
-
-        if currently_working_on_item.is_none() {
-            list.push(Self::StartWorkingOnThis);
-        }
 
         list.push(Self::UnableToDoThisRightNow {
             started: currently_working_on_item,
@@ -238,7 +239,7 @@ impl<'e> DoNowListSingleItemSelection<'e> {
             Self::ReturnToDoNowList,
         ]);
 
-        list
+        (list, default_item)
     }
 }
 
@@ -279,7 +280,7 @@ pub(crate) async fn present_do_now_list_item_selected(
 
     let all_items_lap_highest_count = do_now_list.get_all_items_status();
     let currently_working_on_item = do_now_list.get_base_data().get_surreal_working_on();
-    let list = DoNowListSingleItemSelection::create_list(
+    let (list, default_item) = DoNowListSingleItemSelection::create_list(
         menu_for.get_item_node(),
         all_items_lap_highest_count,
         currently_working_on_item,
@@ -287,6 +288,7 @@ pub(crate) async fn present_do_now_list_item_selected(
 
     let selection = Select::new("Select from the below list|", list)
         .with_page_size(default_select_page_size())
+        .with_starting_cursor(default_item)
         .prompt();
 
     match selection {
@@ -313,14 +315,8 @@ pub(crate) async fn present_do_now_list_item_selected(
                 .await
                 .unwrap();
 
-            Box::pin(present_do_now_list_item_selected(
-                menu_for,
-                why_in_scope,
-                Utc::now(),
-                do_now_list,
-                send_to_data_storage_layer,
-            ))
-            .await
+            //Fall back to the main list because now this is the item we are working on it will be auto selected from the main list
+            Ok(())
         }
         Ok(DoNowListSingleItemSelection::StateASmallerAction) => {
             state_a_smaller_action(menu_for.get_item_node(), send_to_data_storage_layer).await?;
