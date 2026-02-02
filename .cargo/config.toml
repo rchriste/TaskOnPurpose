@@ -1,0 +1,7 @@
+# Local builds default to using the native CPU for best performance.
+#
+# CI/release workflows override this with `RUSTFLAGS=-C target-cpu=generic`
+# to keep published binaries broadly compatible.
+
+[build]
+rustflags = ["-C", "target-cpu=native"]

@@ -8,6 +8,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Override repo default (target-cpu=native) to keep CI builds portable.
+  RUSTFLAGS: -C target-cpu=generic
 
 jobs:
   build-windows:
