@@ -1,2 +1,0 @@
-#When I ignored Thing, which is really meant to be about ignoring RecordId then I was on an alpha version of SurrealDB so it might be worth trying to remove this. Either way I ignored this because I don't modify anything after loading it
-ignore-interior-mutability = ["surrealdb::sql::Thing"]

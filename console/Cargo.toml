@@ -1,6 +1,6 @@
 [package]
 name = "taskonpurpose"
-version = "0.1.172"
+version = "0.1.173"
 edition = "2024"
 
 [dependencies]

@@ -1,5 +1,5 @@
 use chrono::Utc;
-use std::{future::Future, pin::Pin};
+use std::{future::Future, pin::Pin, time::Duration};
 use surrealdb::{
     Error as SurrealError, RecordId, Surreal,
     engine::any::{Any, IntoEndpoint, connect},
@@ -15,6 +15,7 @@ use tokio::{
         mpsc::{Receiver, Sender},
         oneshot::{self, error::RecvError},
     },
+    time::sleep,
 };
 
 use crate::{
@@ -580,6 +581,17 @@ fn auth_configs_equivalent(a: &Option<SurrealAuthConfig>, b: &Option<SurrealAuth
     }
 }
 
+fn is_surrealdb_error_retryable(err: &SurrealError) -> bool {
+    // This is the common shape for embedded file engine contention:
+    // Db(Tx("IO error: ... /LOCK: No locks available"))
+    match err {
+        SurrealError::Db(CoreError::Tx(msg)) => {
+            msg.contains("No locks available") || msg.contains("/LOCK") || msg.contains("\\LOCK")
+        }
+        _ => false,
+    }
+}
+
 async fn connect_with_auto_upgrade(endpoint: &str) -> Result<Surreal<Any>, String> {
     match connect(endpoint).await {
         Ok(db) => Ok(db),
@@ -597,15 +609,42 @@ async fn connect_with_auto_upgrade(endpoint: &str) -> Result<Surreal<Any>, Strin
                             upgrade_err
                         )
                     })?;
-                connect(endpoint).await.map_err(|retry_err| {
+                return connect(endpoint).await.map_err(|retry_err| {
                     format!(
                         "Failed to connect to SurrealDB after upgrade: {:?}",
                         retry_err
                     )
-                })
-            } else {
-                Err(format!("Failed to connect to SurrealDB: {:?}", err))
+                });
             }
+
+            // Transient file-lock contention (common if another process is running).
+            if is_surrealdb_error_retryable(&err) {
+                let max_attempts = 10;
+                let mut delay = Duration::from_millis(100);
+
+                for attempt in 1..=max_attempts {
+                    eprintln!(
+                        "SurrealDB database is locked (endpoint='{}'); retrying {}/{}...",
+                        endpoint, attempt, max_attempts
+                    );
+                    sleep(delay).await;
+                    match connect(endpoint).await {
+                        Ok(db) => return Ok(db),
+                        Err(next_err) => {
+                            if attempt == max_attempts || !is_surrealdb_error_retryable(&next_err) {
+                                return Err(format!(
+                                    "Failed to connect to SurrealDB: {:?}",
+                                    next_err
+                                ));
+                            }
+                            // Exponential backoff up to 2 seconds.
+                            delay = (delay * 2).min(Duration::from_secs(2));
+                        }
+                    }
+                }
+            }
+
+            Err(format!("Failed to connect to SurrealDB: {:?}", err))
         }
     }
 }
@@ -1009,6 +1048,18 @@ pub(crate) async fn copy_database_if_destination_empty(
 
         copy_surreal_tables_preserving_ids(&dest_db, source_tables).await
     }
+}
+
+pub(crate) async fn database_has_any_data(
+    config: &SurrealDbConnectionConfig,
+) -> Result<bool, String> {
+    let db = connect_and_prepare(config).await?;
+    db.use_ns(config.namespace.as_str())
+        .use_db(config.database.as_str())
+        .await
+        .map_err(|e| format!("Failed to select ns/db: {e:?}"))?;
+    let tables = load_from_surrealdb_upgrade_if_needed(&db).await;
+    Ok(surreal_tables_has_any_data(&tables))
 }
 
 async fn ensure_namespace_and_migrate_if_needed(

@@ -12,11 +12,13 @@ pub(crate) mod new_time_spent;
 mod node;
 pub(crate) mod systems;
 
+use core::fmt;
 use std::{
     env,
+    fmt::Display,
     io::{self, Write},
     process,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use better_term::Style;
@@ -26,6 +28,7 @@ use image::{
     imageops::{self, FilterType},
     load_from_memory,
 };
+use inquire::Select;
 use inquire::ui::{Attributes, Color, RenderConfig, StyleSheet, Styled};
 use mimalloc::MiMalloc;
 
@@ -37,6 +40,22 @@ use crate::{
     },
     menu::inquire::do_now_list_menu::present_normal_do_now_list_menu,
 };
+
+enum InitializeFromAskChoice {
+    DoNothing,
+    OverwriteExistingData,
+}
+
+impl Display for InitializeFromAskChoice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InitializeFromAskChoice::DoNothing => write!(f, "Do nothing (keep existing data)"),
+            InitializeFromAskChoice::OverwriteExistingData => {
+                write!(f, "Overwrite existing data (delete + replace from source)")
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 struct CliSurrealConfig {
@@ -50,6 +69,7 @@ struct CliSurrealConfig {
     initialize_from_namespace: Option<String>,
     initialize_from_database: Option<String>,
     initialize_from_copy_behavior: CopyDestinationBehavior,
+    initialize_from_ask: bool,
 }
 
 fn print_help_and_exit() -> ! {
@@ -62,6 +82,7 @@ Usage:
     [--namespace <ns>]
     [--username <user>]
     [--initialize-from-database <db> [--initialize-from-endpoint <endpoint>] [--initialize-from-namespace <ns>]]
+    [--ask]
     [--surreal-auth-username <user> --surreal-auth-password <pass> [--surreal-auth-level <root|ns|db>]]
 
 Options:
@@ -72,6 +93,7 @@ Options:
   --initialize-from-endpoint    Source endpoint for --initialize-from-database (default: same as destination endpoint)
   --initialize-from-namespace   Source namespace for --initialize-from-database (default: same as destination namespace)
   --force                       Use with --initialize-from-database: when the destination database already contains data, delete it before copying (overrides the 'destination must be empty' requirement; use with extreme caution!)
+    --ask                         Use with --initialize-from-database: if the destination already has data, interactively ask whether to do nothing (default) or overwrite (same behavior as --force)
   --surreal-auth-username       SurrealDB login username (optional; used for remote auth)
   --surreal-auth-password       SurrealDB login password (optional; used for remote auth)
   --surreal-auth-level          SurrealDB auth level: root | ns | db (default: root)
@@ -106,6 +128,7 @@ fn parse_cli(args: &[String]) -> Result<CliSurrealConfig, String> {
     let mut initialize_from_namespace: Option<String> = None;
     let mut initialize_from_database: Option<String> = None;
     let mut initialize_from_copy_behavior = CopyDestinationBehavior::ErrorIfNotEmpty;
+    let mut initialize_from_ask = false;
 
     let mut i = 1usize;
     while i < args.len() {
@@ -194,6 +217,9 @@ fn parse_cli(args: &[String]) -> Result<CliSurrealConfig, String> {
             "--force" => {
                 initialize_from_copy_behavior = CopyDestinationBehavior::ForceDeleteExisting;
             }
+            "--ask" => {
+                initialize_from_ask = true;
+            }
             _ => {
                 return Err(format!("Unknown argument '{}'. Try --help.", args[i]));
             }
@@ -210,6 +236,19 @@ fn parse_cli(args: &[String]) -> Result<CliSurrealConfig, String> {
         );
     }
 
+    if initialize_from_database.is_none() && initialize_from_ask {
+        return Err("--ask requires --initialize-from-database".to_string());
+    }
+
+    if initialize_from_ask
+        && matches!(
+            initialize_from_copy_behavior,
+            CopyDestinationBehavior::ForceDeleteExisting
+        )
+    {
+        return Err("--ask cannot be combined with --force (choose one)".to_string());
+    }
+
     Ok(CliSurrealConfig {
         endpoint,
         namespace,
@@ -221,6 +260,7 @@ fn parse_cli(args: &[String]) -> Result<CliSurrealConfig, String> {
         initialize_from_namespace,
         initialize_from_database,
         initialize_from_copy_behavior,
+        initialize_from_ask,
     })
 }
 
@@ -326,18 +366,63 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             destination.database
         );
 
-        if let Err(err) = data_layer_commands::copy_database_if_destination_empty(
-            source,
-            destination,
-            surreal_cli.initialize_from_copy_behavior,
-        )
-        .await
+        let mut behavior = surreal_cli.initialize_from_copy_behavior;
+        if surreal_cli.initialize_from_ask {
+            match data_layer_commands::database_has_any_data(&destination).await {
+                Ok(true) => {
+                    let choices = vec![
+                        InitializeFromAskChoice::DoNothing,
+                        InitializeFromAskChoice::OverwriteExistingData,
+                    ];
+                    let selection = Select::new(
+                        "Destination already contains data. What do you want to do?",
+                        choices,
+                    )
+                    .with_starting_cursor(0)
+                    .prompt();
+
+                    match selection {
+                        Ok(InitializeFromAskChoice::OverwriteExistingData) => {
+                            behavior = CopyDestinationBehavior::ForceDeleteExisting;
+                        }
+                        Ok(InitializeFromAskChoice::DoNothing) => {
+                            eprintln!("No changes made (kept existing destination data).");
+                            return Ok(());
+                        }
+                        Err(err) => {
+                            eprintln!("Prompt cancelled: {err}");
+                            process::exit(2);
+                        }
+                    }
+                }
+                Ok(false) => {
+                    // Destination empty; proceed normally.
+                }
+                Err(err) => {
+                    eprintln!("Failed to check destination contents: {err}");
+                    process::exit(2);
+                }
+            }
+        }
+
+        let started = Instant::now();
+        if let Err(err) =
+            data_layer_commands::copy_database_if_destination_empty(source, destination, behavior)
+                .await
         {
             eprintln!("Copy failed: {err}");
             process::exit(2);
         }
 
-        eprintln!("Copy complete.");
+        let elapsed = started.elapsed();
+        match behavior {
+            CopyDestinationBehavior::ForceDeleteExisting => {
+                eprintln!("Overwrite complete in {:.2?}.", elapsed);
+            }
+            CopyDestinationBehavior::ErrorIfNotEmpty => {
+                eprintln!("Copy complete in {:.2?}.", elapsed);
+            }
+        }
         return Ok(());
     }
 
@@ -475,5 +560,25 @@ mod tests {
         let args = vec!["taskonpurpose".to_string(), "--unexpected".to_string()];
         let err = parse_cli(&args).expect_err("Should fail for unknown argument");
         assert!(err.contains("Unknown argument"));
+    }
+
+    #[test]
+    fn parse_cli_errors_when_ask_without_initialize_from_database() {
+        let args = vec!["taskonpurpose".to_string(), "--ask".to_string()];
+        let err = parse_cli(&args).expect_err("Should fail when --ask is used alone");
+        assert!(err.contains("--ask requires --initialize-from-database"));
+    }
+
+    #[test]
+    fn parse_cli_errors_when_ask_and_force_combined() {
+        let args = vec![
+            "taskonpurpose".to_string(),
+            "--initialize-from-database".to_string(),
+            "source_db".to_string(),
+            "--ask".to_string(),
+            "--force".to_string(),
+        ];
+        let err = parse_cli(&args).expect_err("Should fail when --ask and --force are combined");
+        assert!(err.contains("--ask cannot be combined with --force"));
     }
 }
