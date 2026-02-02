@@ -28,8 +28,8 @@ use image::{
     imageops::{self, FilterType},
     load_from_memory,
 };
-use inquire::Select;
 use inquire::ui::{Attributes, Color, RenderConfig, StyleSheet, Styled};
+use inquire::{InquireError, Select};
 use mimalloc::MiMalloc;
 
 use tokio::sync::mpsc;
@@ -389,8 +389,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             eprintln!("No changes made (kept existing destination data).");
                             return Ok(());
                         }
+                        Err(InquireError::OperationCanceled)
+                        | Err(InquireError::OperationInterrupted) => {
+                            eprintln!("No changes made (kept existing destination data).");
+                            return Ok(());
+                        }
                         Err(err) => {
-                            eprintln!("Prompt cancelled: {err}");
+                            // Unexpected prompt error: treat as a real error.
+                            eprintln!("Prompt failed: {err}");
                             process::exit(2);
                         }
                     }
