@@ -1,3 +1,4 @@
+use better_term::Style;
 use chrono::{DateTime, Local, Utc};
 use fundu::{CustomDurationParser, CustomTimeUnit, SaturatingInto, TimeUnit};
 use lazy_static::lazy_static;
@@ -461,6 +462,13 @@ pub(crate) async fn prompt_for_urgency_plan(
     println!("Initial Urgency");
     let initial_urgency = prompt_for_urgency(existing_initial);
 
+    if existing_is_escalating {
+        println!(
+            "{}Note that last time this was set to Will Escalate{}",
+            Style::default().italic(),
+            Style::default()
+        );
+    }
     let urgency_plan = Select::new(
         "Does the urgency escalate?|",
         vec![
@@ -468,7 +476,7 @@ pub(crate) async fn prompt_for_urgency_plan(
             UrgencyPlanSelection::WillEscalate,
         ],
     )
-    .with_starting_cursor(if existing_is_escalating { 1 } else { 0 })
+    .with_starting_cursor(0)
     .with_page_size(default_select_page_size())
     .prompt()
     .unwrap();

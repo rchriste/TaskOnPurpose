@@ -485,8 +485,8 @@ async fn present_reflection(
         .collect();
 
     let neither = items_in_range
-        .iter()
-        .filter_map(|(_, v)| {
+        .values()
+        .filter_map(|v| {
             if v.item_status.has_parents(Filter::All) {
                 None
             } else if v.item_status.is_type_motivation_kind_neither() {
@@ -505,8 +505,8 @@ async fn present_reflection(
         }
     }
     let no_parents_non_core: Vec<RecordId> = items_in_range
-        .iter()
-        .filter_map(|(_, v)| {
+        .values()
+        .filter_map(|v| {
             if v.item_status.has_parents(Filter::All) {
                 None
             } else if !v.is_type_motivation_kind_core() && !v.is_type_motivation_kind_neither() {
@@ -528,8 +528,8 @@ async fn present_reflection(
     println!();
 
     let no_parents_core: Vec<RecordId> = items_in_range
-        .iter()
-        .filter_map(|(_, v)| {
+        .values()
+        .filter_map(|v| {
             if v.item_status.has_parents(Filter::All) {
                 None
             } else if v.is_type_motivation_kind_core() {

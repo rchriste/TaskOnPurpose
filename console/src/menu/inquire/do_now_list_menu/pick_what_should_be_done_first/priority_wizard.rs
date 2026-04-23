@@ -3,7 +3,6 @@ use std::fmt::{self, Display, Formatter};
 use ahash::HashSet;
 use chrono::Utc;
 use inquire::{InquireError, MultiSelect, Select};
-use rand::Rng;
 use tokio::sync::mpsc::Sender;
 
 use crate::data_storage::surrealdb_layer::SurrealTrigger;
@@ -82,7 +81,6 @@ pub(crate) async fn priority_wizard_loop<'a>(
     // Track items that have been selected already
     let mut selected_items = HashSet::default();
     let mut used_as_highest_priority = HashSet::default();
-    let mut rng = rand::rng();
 
     loop {
         // Find items that haven't been selected yet
@@ -116,7 +114,7 @@ pub(crate) async fn priority_wizard_loop<'a>(
             match final_choice {
                 Ok(FinalPriorityWizardChoice::PickRandom) => {
                     // Pick a random item from all choices and set it as higher priority for 1 minute
-                    let random_idx = rng.random_range(0..unselected_items.len());
+                    let random_idx = rand::random_range(0..unselected_items.len());
                     let random_choice = &unselected_items[random_idx];
 
                     // Set this item as higher priority than all others for 1 minute
@@ -161,7 +159,7 @@ pub(crate) async fn priority_wizard_loop<'a>(
         }
 
         // Pick a random unselected item
-        let random_idx = rng.random_range(0..items_still_to_use.len());
+        let random_idx = rand::random_range(0..items_still_to_use.len());
         let selected_at_random = items_still_to_use[random_idx];
         used_as_highest_priority.insert(selected_at_random.get_surreal_record_id());
 

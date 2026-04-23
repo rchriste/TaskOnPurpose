@@ -667,7 +667,7 @@ async fn copy_surreal_items_preserving_ids(
     db: &Surreal<Any>,
     surreal_items: Vec<SurrealItem>,
 ) -> Result<(), String> {
-    stream::iter(surreal_items.into_iter()) // wrap in a stream so we can use buffer_unordered below to limit concurrency
+    stream::iter(surreal_items) // wrap in a stream so we can use buffer_unordered below to limit concurrency
         .map(|record| async move {
             let mut updated: Vec<SurrealItem> = db
                 .upsert(SurrealItem::TABLE_NAME)
@@ -704,7 +704,7 @@ async fn copy_surreal_time_spent_preserving_ids(
     db: &Surreal<Any>,
     surreal_time_spent_log: Vec<SurrealTimeSpent>,
 ) -> Result<(), String> {
-    stream::iter(surreal_time_spent_log.into_iter())
+    stream::iter(surreal_time_spent_log)
         .map(|record| async move {
             let mut updated: Vec<SurrealTimeSpent> = db
                 .upsert(SurrealTimeSpent::TABLE_NAME)
@@ -740,7 +740,7 @@ async fn copy_surreal_in_the_moment_priorities_preserving_ids(
     db: &Surreal<Any>,
     surreal_in_the_moment_priorities: Vec<SurrealInTheMomentPriority>,
 ) -> Result<(), String> {
-    stream::iter(surreal_in_the_moment_priorities.into_iter())
+    stream::iter(surreal_in_the_moment_priorities)
         .map(|record| async move {
             let mut updated: Vec<SurrealInTheMomentPriority> = db
                 .upsert(SurrealInTheMomentPriority::TABLE_NAME)
@@ -779,7 +779,7 @@ async fn copy_surreal_current_modes_preserving_ids(
     db: &Surreal<Any>,
     surreal_current_modes: Vec<SurrealCurrentMode>,
 ) -> Result<(), String> {
-    stream::iter(surreal_current_modes.into_iter())
+    stream::iter(surreal_current_modes)
         .map(|record| async move {
             let mut updated: Vec<SurrealCurrentMode> = db
                 .upsert(SurrealCurrentMode::TABLE_NAME)
@@ -815,7 +815,7 @@ async fn copy_surreal_modes_preserving_ids(
     db: &Surreal<Any>,
     surreal_modes: Vec<SurrealMode>,
 ) -> Result<(), String> {
-    stream::iter(surreal_modes.into_iter())
+    stream::iter(surreal_modes)
         .map(|record| async move {
             let mut updated: Vec<SurrealMode> = db
                 .upsert(surreal_mode::SurrealMode::TABLE_NAME)
@@ -851,7 +851,7 @@ async fn copy_surreal_events_preserving_ids(
     db: &Surreal<Any>,
     surreal_events: Vec<SurrealEvent>,
 ) -> Result<(), String> {
-    stream::iter(surreal_events.into_iter())
+    stream::iter(surreal_events)
         .map(|record| async move {
             let mut updated: Vec<SurrealEvent> = db
                 .upsert(SurrealEvent::TABLE_NAME)

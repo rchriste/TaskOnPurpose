@@ -1,13 +1,13 @@
 [package]
 name = "taskonpurpose"
-version = "0.1.175"
+version = "0.1.176"
 edition = "2024"
 
 [dependencies]
 inquire = { git = "https://github.com/rchriste/inquire", branch = "main", features = ["editor"] } #inquire is for building interactive prompts in terminals
 tokio = { version = "1.44.2", features = ["full"] } #Added so I can use Surreal DB
 #Added so I can store and persist data, kv-mem is an in memory database that is maybe not required in a not test build
-surrealdb = { version = "2.5.0", features = ["kv-mem", "kv-rocksdb"] }
+surrealdb = { version = "2.6.5", features = ["kv-mem", "kv-rocksdb"] }
 serde = "1.0.208" #Implied to be required by surrealdb_extra's getting started documentation
 chrono = "0.4.38"
 fundu = { version = "2.0.1", features = ["standard", "custom"] } #So I can parse when to expect something to be available
@@ -20,7 +20,7 @@ ouroboros = { git = "https://github.com/someguynamedjosh/ouroboros" }
 derive_builder = "0.20.0"
 better_term = "1.4.61" #Added so I can use bold and other styles, initially just in the help text but with goals to expand
 crossterm = "0.29.0" #Added so I can use RATATUI
-rand = "0.9.0" #So I can pick a random priority
+rand = {version = "0.10.1", features = ["thread_rng"]} #So I can pick a random priority
 ahash = "0.8.11" #Because it is 10x faster than Rust's built in hasher
 mimalloc = "0.1.43" #Because allocation performance shows up in performance measurements, this seems to give about a %15 perf improvement when running calculated data
 # Use my branch until the bug fix for Windows terminal is pulled in

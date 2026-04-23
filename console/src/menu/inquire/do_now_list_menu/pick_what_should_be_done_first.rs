@@ -1,7 +1,6 @@
 pub(crate) mod priority_wizard;
 
 use inquire::{InquireError, Select};
-use rand::Rng;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
@@ -98,7 +97,7 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
         })
         .collect::<Vec<_>>();
 
-    let starting_choice = rand::rng().random_range(0..display_choices.len());
+    let starting_choice = rand::random_range(0..display_choices.len());
     let choice = Select::new("Pick a priority?", display_choices)
         .with_page_size(default_select_page_size())
         .with_starting_cursor(starting_choice)
