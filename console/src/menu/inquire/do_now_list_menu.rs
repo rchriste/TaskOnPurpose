@@ -174,13 +174,23 @@ impl<'a> InquireDoNowListItem<'a> {
     }
 }
 
+#[derive(PartialEq)]
+pub(crate) enum ShouldResumeCurrentlyWorkingOn {
+    ResumeCurrentlyWorkingOn,
+    AlwaysLoadDoNowList,
+}
+
 pub(crate) async fn present_normal_do_now_list_menu(
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
+    should_resume_currently_working_on: ShouldResumeCurrentlyWorkingOn,
 ) -> Result<(), ()> {
     let do_now_list = load_do_now_list_from_db(send_to_data_storage_layer).await;
     // If the user previously said they're currently working on an item, resume directly into
     // that single-item view instead of showing the main list.
-    if let Some(working_on) = do_now_list.get_base_data().get_surreal_working_on() {
+    if should_resume_currently_working_on
+        == ShouldResumeCurrentlyWorkingOn::ResumeCurrentlyWorkingOn
+        && let Some(working_on) = do_now_list.get_base_data().get_surreal_working_on()
+    {
         let resumed = do_now_list
             .get_all_items_status()
             .iter()

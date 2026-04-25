@@ -22,6 +22,7 @@
         "meds",
         "mimalloc",
         "mkemqn",
+        "mlterm",
         "neuro",
         "neurodiverse",
         "neurodiversity",
@@ -52,6 +53,7 @@
         "tikv",
         "upstreamed",
         "Visio",
+        "wezterm",
         "Ｗｏｒｋ",
         "zerocopy"
     ]

@@ -36,7 +36,8 @@ use crate::{
 };
 
 use super::{
-    do_now_list_menu::present_normal_do_now_list_menu, update_item_summary::update_item_summary,
+    do_now_list_menu::{ShouldResumeCurrentlyWorkingOn, present_normal_do_now_list_menu},
+    update_item_summary::update_item_summary,
 };
 
 enum TopMenuSelection {
@@ -103,7 +104,11 @@ pub(crate) async fn present_back_menu(
             finished_items::present_finished_items_menu(send_to_data_storage_layer).await
         }
         Ok(TopMenuSelection::ViewDoNowList) => {
-            present_normal_do_now_list_menu(send_to_data_storage_layer).await
+            present_normal_do_now_list_menu(
+                send_to_data_storage_layer,
+                ShouldResumeCurrentlyWorkingOn::AlwaysLoadDoNowList,
+            )
+            .await
         }
         Ok(TopMenuSelection::ViewImportancePriorities) => {
             view_priorities(send_to_data_storage_layer).await

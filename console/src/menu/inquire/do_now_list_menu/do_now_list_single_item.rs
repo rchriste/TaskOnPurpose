@@ -33,12 +33,13 @@ use crate::{
         back_menu::capture,
         default_select_page_size,
         do_now_list_menu::{
+            ShouldResumeCurrentlyWorkingOn,
             do_now_list_single_item::{
                 give_this_item_a_parent::give_this_item_a_parent,
                 something_else_should_be_done_first::something_else_should_be_done_first,
                 state_a_smaller_action::state_a_smaller_action,
             },
-            review_item,
+            present_normal_do_now_list_menu, review_item,
         },
         item_children_summary,
         select_higher_importance_than_this::select_higher_importance_than_this,
@@ -465,7 +466,13 @@ pub(crate) async fn present_do_now_list_item_selected(
             Ok(())
         }
         Ok(DoNowListSingleItemSelection::ReturnToDoNowList)
-        | Err(InquireError::OperationCanceled) => Ok(()),
+        | Err(InquireError::OperationCanceled) => {
+            Box::pin(present_normal_do_now_list_menu(
+                send_to_data_storage_layer,
+                ShouldResumeCurrentlyWorkingOn::AlwaysLoadDoNowList,
+            ))
+            .await
+        }
         Err(InquireError::OperationInterrupted) => Err(()),
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
     }
