@@ -8,7 +8,10 @@ use crate::{
         data_layer_commands::DataLayerCommands,
         surreal_current_mode::{NewCurrentMode, SurrealSelectedSingleMode},
     },
-    menu::inquire::{default_select_page_size, do_now_list_menu::present_normal_do_now_list_menu},
+    menu::inquire::{
+        default_select_page_size,
+        do_now_list_menu::{ShouldResumeCurrentlyWorkingOn, present_normal_do_now_list_menu},
+    },
     systems::do_now_list::current_mode::{CurrentMode, SelectedSingleMode},
 };
 
@@ -64,7 +67,11 @@ pub(crate) async fn present_change_mode_menu(
             choices
         }
         Err(InquireError::OperationCanceled) => {
-            return Box::pin(present_normal_do_now_list_menu(send_to_data_storage_layer)).await;
+            return Box::pin(present_normal_do_now_list_menu(
+                send_to_data_storage_layer,
+                ShouldResumeCurrentlyWorkingOn::AlwaysLoadDoNowList,
+            ))
+            .await;
         }
         Err(InquireError::OperationInterrupted) => return Err(()),
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
@@ -105,7 +112,11 @@ pub(crate) async fn present_change_mode_menu(
             choices
         }
         Err(InquireError::OperationCanceled) => {
-            return Box::pin(present_normal_do_now_list_menu(send_to_data_storage_layer)).await;
+            return Box::pin(present_normal_do_now_list_menu(
+                send_to_data_storage_layer,
+                ShouldResumeCurrentlyWorkingOn::AlwaysLoadDoNowList,
+            ))
+            .await;
         }
         Err(InquireError::OperationInterrupted) => return Err(()),
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),

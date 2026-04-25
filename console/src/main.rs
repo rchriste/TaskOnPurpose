@@ -38,7 +38,9 @@ use crate::{
     data_storage::surrealdb_layer::data_layer_commands::{
         self, CopyDestinationBehavior, SurrealAuthConfig, data_storage_start_and_run,
     },
-    menu::inquire::do_now_list_menu::present_normal_do_now_list_menu,
+    menu::inquire::do_now_list_menu::{
+        ShouldResumeCurrentlyWorkingOn, present_normal_do_now_list_menu,
+    },
 };
 
 enum InitializeFromAskChoice {
@@ -457,7 +459,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     loop {
-        match present_normal_do_now_list_menu(&send_to_data_storage_layer_tx).await {
+        match present_normal_do_now_list_menu(
+            &send_to_data_storage_layer_tx,
+            ShouldResumeCurrentlyWorkingOn::ResumeCurrentlyWorkingOn,
+        )
+        .await
+        {
             Result::Ok(..) => (),
             Result::Err(..) => break,
         };
