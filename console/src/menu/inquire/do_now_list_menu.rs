@@ -13,7 +13,7 @@ use crate::menu::inquire::default_select_page_size;
 use ahash::{HashMap, HashSet};
 use better_term::Style;
 use change_mode::present_change_mode_menu;
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Local, NaiveTime, Utc};
 use classify_item::present_item_needs_a_classification_menu;
 use do_now_list_single_item::urgency_plan::present_set_ready_and_urgency_plan_menu;
 use inquire::{InquireError, Select};
@@ -33,8 +33,9 @@ use crate::{
         surreal_tables::SurrealTables,
     },
     display::{
-        display_item::DisplayItem, display_item_node::DisplayFormat,
-        display_item_status::DisplayItemStatus, display_scheduled_item::DisplayScheduledItem,
+        display_duration::DisplayDuration, display_item::DisplayItem,
+        display_item_node::DisplayFormat, display_item_status::DisplayItemStatus,
+        display_scheduled_item::DisplayScheduledItem,
         display_urgency_level_item_with_item_status::DisplayUrgencyLevelItemWithItemStatus,
     },
     menu::inquire::back_menu::present_back_menu,
@@ -230,7 +231,51 @@ pub(crate) async fn present_normal_do_now_list_menu(
     }
 
     present_upcoming(&do_now_list);
+    present_time_spent_today_summary(&do_now_list);
     present_do_now_list_menu(do_now_list, send_to_data_storage_layer).await
+}
+
+pub(crate) fn present_time_spent_today_summary(do_now_list: &DoNowList) {
+    let now_local = Local::now();
+    let today_midnight = now_local.with_time(NaiveTime::MIN);
+
+    let start_local = match today_midnight {
+        chrono::LocalResult::Single(dt) => dt,
+        // If it is ambiguous (rare for midnight), pick the earliest.
+        chrono::LocalResult::Ambiguous(earliest, _) => earliest,
+        // If it doesn't exist (very unlikely at midnight), fall back to "now_local".
+        chrono::LocalResult::None => now_local,
+    };
+
+    let start_utc = start_local.with_timezone(&Utc);
+    let end_utc = now_local.with_timezone(&Utc);
+
+    let logs_in_range: Vec<_> = do_now_list
+        .get_time_spent_log()
+        .iter()
+        .filter(|x| x.is_within(&start_utc, &end_utc))
+        .collect();
+
+    if logs_in_range.is_empty() {
+        return;
+    }
+
+    let total_time = logs_in_range
+        .iter()
+        .map(|x| x.get_time_delta())
+        .sum::<chrono::Duration>();
+
+    if total_time.is_zero() {
+        return;
+    }
+
+    println!();
+    println!(
+        "{}🕜 Time spent today: {}{}",
+        Style::new().bold(),
+        DisplayDuration::new(&total_time.to_std().expect("valid")),
+        Style::new(),
+    );
 }
 
 pub(crate) async fn load_do_now_list_from_db(
