@@ -242,7 +242,7 @@ pub(crate) async fn present_normal_do_now_list_menu(
 /// after) are counted for the portion of time that falls within the window.
 ///
 /// Inverted timestamps (where stopped < started, as can occur with legacy/corrupted data)
-/// are normalised before the overlap is computed, so they do not cause a panic.
+/// are normalized before the overlap is computed, so they do not cause a panic.
 ///
 /// Returns the sum of all overlapping durations as a non-negative [`chrono::Duration`].
 pub(crate) fn compute_time_spent_in_window(
@@ -282,10 +282,6 @@ pub(crate) fn present_time_spent_today_summary(do_now_list: &DoNowList) {
 
     let logs: Vec<&TimeSpent<'_>> = do_now_list.get_time_spent_log().iter().collect();
     let total_time = compute_time_spent_in_window(start_utc, end_utc, &logs);
-
-    if total_time.is_zero() {
-        return;
-    }
 
     println!();
     println!(

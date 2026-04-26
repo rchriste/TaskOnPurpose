@@ -24,6 +24,9 @@ impl Display for DisplayDuration<'_> {
         let years = years % 12;
         let mut result = String::new();
         let mut first = true;
+        if duration.is_zero() {
+            result.push_str("None");
+        }
         if years > 0 {
             if !first {
                 result.push(' ');
