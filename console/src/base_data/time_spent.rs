@@ -63,6 +63,11 @@ impl<'s> TimeSpent<'s> {
         &self.surreal_time_spent.when_started
     }
 
+/// Returns the UTC timestamp at which this time log entry was stopped.
+    pub(crate) fn get_stopped_at(&self) -> &DateTime<Utc> {
+        &self.surreal_time_spent.when_stopped
+    }
+
     pub(crate) fn get_time_delta(&self) -> TimeDelta {
         let when_started: DateTime<Utc> = self.surreal_time_spent.when_started.clone().into();
         self.surreal_time_spent

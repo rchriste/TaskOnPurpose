@@ -26,7 +26,7 @@ use surrealdb::RecordId;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
-    base_data::BaseData,
+    base_data::{BaseData, time_spent::TimeSpent},
     calculated_data::CalculatedData,
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands, surreal_item::SurrealDependency,
@@ -235,6 +235,36 @@ pub(crate) async fn present_normal_do_now_list_menu(
     present_do_now_list_menu(do_now_list, send_to_data_storage_layer).await
 }
 
+/// Computes the total time from `logs` that falls within the `[start, end)` window.
+///
+/// Each log entry is intersected with the window rather than requiring full containment,
+/// so sessions that overlap the window boundaries (e.g. started before midnight and stopped
+/// after) are counted for the portion of time that falls within the window.
+///
+/// Inverted timestamps (where stopped < started, as can occur with legacy/corrupted data)
+/// are normalised before the overlap is computed, so they do not cause a panic.
+///
+/// Returns the sum of all overlapping durations as a non-negative [`chrono::Duration`].
+pub(crate) fn compute_time_spent_in_window(
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+    logs: &[&TimeSpent<'_>],
+) -> chrono::Duration {
+    logs.iter()
+        .filter_map(|x| {
+            let entry_start = std::cmp::min(*x.get_started_at(), *x.get_stopped_at());
+            let entry_end = std::cmp::max(*x.get_started_at(), *x.get_stopped_at());
+            let overlap_start = std::cmp::max(entry_start, start);
+            let overlap_end = std::cmp::min(entry_end, end);
+            if overlap_end > overlap_start {
+                Some(overlap_end - overlap_start)
+            } else {
+                None
+            }
+        })
+        .fold(chrono::Duration::zero(), |acc, d| acc + d)
+}
+
 pub(crate) fn present_time_spent_today_summary(do_now_list: &DoNowList) {
     let now_local = Local::now();
     let today_midnight = now_local.with_time(NaiveTime::MIN);
@@ -250,20 +280,8 @@ pub(crate) fn present_time_spent_today_summary(do_now_list: &DoNowList) {
     let start_utc = start_local.with_timezone(&Utc);
     let end_utc = now_local.with_timezone(&Utc);
 
-    let logs_in_range: Vec<_> = do_now_list
-        .get_time_spent_log()
-        .iter()
-        .filter(|x| x.is_within(&start_utc, &end_utc))
-        .collect();
-
-    if logs_in_range.is_empty() {
-        return;
-    }
-
-    let total_time = logs_in_range
-        .iter()
-        .map(|x| x.get_time_delta())
-        .sum::<chrono::Duration>();
+    let logs: Vec<&TimeSpent<'_>> = do_now_list.get_time_spent_log().iter().collect();
+    let total_time = compute_time_spent_in_window(start_utc, end_utc, &logs);
 
     if total_time.is_zero() {
         return;
@@ -273,7 +291,11 @@ pub(crate) fn present_time_spent_today_summary(do_now_list: &DoNowList) {
     println!(
         "{}🕜 Time spent today: {}{}",
         Style::new().bold(),
-        DisplayDuration::new(&total_time.to_std().expect("valid")),
+        DisplayDuration::new(
+            &total_time
+                .to_std()
+                .expect("overlap duration is always non-negative")
+        ),
         Style::new(),
     );
 }
@@ -990,5 +1012,129 @@ mod tests {
         assert!(matches!(list[1], EventTrigger::TriggerEvent { .. }));
         assert!(matches!(list[2], EventTrigger::ItemDependentOnThisEvent(_)));
         assert!(matches!(list[3], EventTrigger::ItemDependentOnThisEvent(_)));
+    }
+
+    mod compute_time_spent_in_window_tests {
+        use chrono::{Duration, TimeZone, Utc};
+
+        use crate::{
+            base_data::time_spent::TimeSpent,
+            data_storage::surrealdb_layer::surreal_time_spent::SurrealTimeSpent,
+            menu::inquire::do_now_list_menu::compute_time_spent_in_window,
+        };
+
+        /// Creates a minimal [`SurrealTimeSpent`] fixture with the given start and stop times,
+        /// suitable for constructing [`TimeSpent`] instances in tests.
+        fn make_surreal_time_spent(
+            start: chrono::DateTime<Utc>,
+            stop: chrono::DateTime<Utc>,
+        ) -> SurrealTimeSpent {
+            SurrealTimeSpent {
+                id: None,
+                version: 1,
+                working_on: vec![],
+                why_in_scope: vec![],
+                urgency: None,
+                when_started: start.into(),
+                when_stopped: stop.into(),
+                dedication: None,
+            }
+        }
+
+        #[test]
+        fn empty_logs_returns_zero() {
+            let start = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+            let end = Utc.with_ymd_and_hms(2024, 1, 1, 12, 0, 0).unwrap();
+            let result = compute_time_spent_in_window(start, end, &[]);
+            assert_eq!(result, Duration::zero());
+        }
+
+        #[test]
+        fn entry_fully_inside_window_counts_full_duration() {
+            let start = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+            let end = Utc.with_ymd_and_hms(2024, 1, 1, 23, 59, 59).unwrap();
+            let entry_start = Utc.with_ymd_and_hms(2024, 1, 1, 8, 0, 0).unwrap();
+            let entry_stop = Utc.with_ymd_and_hms(2024, 1, 1, 9, 0, 0).unwrap();
+
+            let surreal = make_surreal_time_spent(entry_start, entry_stop);
+            let ts = TimeSpent::new(&surreal);
+            let result = compute_time_spent_in_window(start, end, &[&ts]);
+            assert_eq!(result, Duration::hours(1));
+        }
+
+        #[test]
+        fn entry_outside_window_is_excluded() {
+            let start = Utc.with_ymd_and_hms(2024, 1, 2, 0, 0, 0).unwrap();
+            let end = Utc.with_ymd_and_hms(2024, 1, 2, 23, 59, 59).unwrap();
+            let entry_start = Utc.with_ymd_and_hms(2024, 1, 1, 8, 0, 0).unwrap();
+            let entry_stop = Utc.with_ymd_and_hms(2024, 1, 1, 9, 0, 0).unwrap();
+
+            let surreal = make_surreal_time_spent(entry_start, entry_stop);
+            let ts = TimeSpent::new(&surreal);
+            let result = compute_time_spent_in_window(start, end, &[&ts]);
+            assert_eq!(result, Duration::zero());
+        }
+
+        #[test]
+        fn entry_overlapping_window_start_counts_only_overlap() {
+            // Window starts at midnight; entry started before midnight and stopped after
+            let window_start = Utc.with_ymd_and_hms(2024, 1, 2, 0, 0, 0).unwrap();
+            let window_end = Utc.with_ymd_and_hms(2024, 1, 2, 23, 59, 59).unwrap();
+            let entry_start = Utc.with_ymd_and_hms(2024, 1, 1, 23, 0, 0).unwrap(); // 1 hour before midnight
+            let entry_stop = Utc.with_ymd_and_hms(2024, 1, 2, 1, 0, 0).unwrap(); // 1 hour after midnight
+
+            let surreal = make_surreal_time_spent(entry_start, entry_stop);
+            let ts = TimeSpent::new(&surreal);
+            let result = compute_time_spent_in_window(window_start, window_end, &[&ts]);
+            assert_eq!(result, Duration::hours(1));
+        }
+
+        #[test]
+        fn entry_overlapping_window_end_counts_only_overlap() {
+            let window_start = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+            let window_end = Utc.with_ymd_and_hms(2024, 1, 1, 12, 0, 0).unwrap();
+            let entry_start = Utc.with_ymd_and_hms(2024, 1, 1, 11, 0, 0).unwrap();
+            let entry_stop = Utc.with_ymd_and_hms(2024, 1, 1, 14, 0, 0).unwrap(); // ends 2 hours past window end
+
+            let surreal = make_surreal_time_spent(entry_start, entry_stop);
+            let ts = TimeSpent::new(&surreal);
+            let result = compute_time_spent_in_window(window_start, window_end, &[&ts]);
+            assert_eq!(result, Duration::hours(1));
+        }
+
+        #[test]
+        fn inverted_timestamps_counted_by_overlap_of_normalized_range() {
+            // Entry with inverted start/stop (legacy/corrupted data)
+            let window_start = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+            let window_end = Utc.with_ymd_and_hms(2024, 1, 1, 23, 59, 59).unwrap();
+            let entry_start = Utc.with_ymd_and_hms(2024, 1, 1, 9, 0, 0).unwrap();
+            let entry_stop = Utc.with_ymd_and_hms(2024, 1, 1, 8, 0, 0).unwrap(); // stop before start (inverted)
+
+            let surreal = make_surreal_time_spent(entry_start, entry_stop);
+            let ts = TimeSpent::new(&surreal);
+            let result = compute_time_spent_in_window(window_start, window_end, &[&ts]);
+            // Normalized range is [8:00, 9:00] — still 1 hour
+            assert_eq!(result, Duration::hours(1));
+        }
+
+        #[test]
+        fn multiple_entries_sum_correctly() {
+            let window_start = Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap();
+            let window_end = Utc.with_ymd_and_hms(2024, 1, 1, 23, 59, 59).unwrap();
+
+            let s1 = make_surreal_time_spent(
+                Utc.with_ymd_and_hms(2024, 1, 1, 8, 0, 0).unwrap(),
+                Utc.with_ymd_and_hms(2024, 1, 1, 9, 0, 0).unwrap(),
+            );
+            let s2 = make_surreal_time_spent(
+                Utc.with_ymd_and_hms(2024, 1, 1, 10, 0, 0).unwrap(),
+                Utc.with_ymd_and_hms(2024, 1, 1, 10, 30, 0).unwrap(),
+            );
+            let t1 = TimeSpent::new(&s1);
+            let t2 = TimeSpent::new(&s2);
+
+            let result = compute_time_spent_in_window(window_start, window_end, &[&t1, &t2]);
+            assert_eq!(result, Duration::minutes(90));
+        }
     }
 }
