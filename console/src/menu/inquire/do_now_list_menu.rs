@@ -47,10 +47,7 @@ use crate::{
         urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
         why_in_scope_and_action_with_item_status::{WhyInScope, WhyInScopeAndActionWithItemStatus},
     },
-    systems::do_now_list::{
-        DoNowList,
-        current_mode::{CurrentMode, SelectedSingleMode},
-    },
+    systems::do_now_list::{DoNowList, current_mode::CurrentMode},
 };
 
 use self::do_now_list_single_item::{
@@ -84,14 +81,11 @@ impl Display for InquireDoNowListItem<'_> {
                 write!(f, "{}", display)
             }
             Self::ChangeMode(current_mode) => {
-                let mut mode_icons = "I:".to_string();
-                mode_icons.push_str(&turn_to_icons(current_mode.get_importance_in_scope()));
-                mode_icons.push_str("  & ");
-
-                mode_icons.push_str("U:");
-                let urgency_mode_icons = turn_to_icons(current_mode.get_urgency_in_scope());
-                mode_icons.push_str(&urgency_mode_icons);
-                write!(f, "🧭  Change Mode - Currently: {}", mode_icons)
+                write!(
+                    f,
+                    "🧭  Change Mode - Currently: {}",
+                    current_mode.get_name()
+                )
             }
             Self::RefreshList(bullet_list_created) => write!(
                 f,
@@ -115,28 +109,6 @@ impl Display for InquireDoNowListItem<'_> {
             Self::Help => write!(f, "❓  Help"),
         }
     }
-}
-
-fn turn_to_icons(in_scope: &[SelectedSingleMode]) -> String {
-    let mut mode_icons = String::default();
-    if in_scope
-        .iter()
-        .any(|x| x == &SelectedSingleMode::AllCoreMotivationalPurposes)
-    {
-        mode_icons.push('🏢');
-    } else {
-        mode_icons.push_str("  ");
-    }
-    if in_scope
-        .iter()
-        .any(|x| x == &SelectedSingleMode::AllNonCoreMotivationalPurposes)
-    {
-        mode_icons.push('🏞')
-    } else {
-        mode_icons.push(' ')
-    }
-
-    mode_icons
 }
 
 impl<'a> InquireDoNowListItem<'a> {

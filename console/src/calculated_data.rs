@@ -112,7 +112,7 @@ impl CalculatedData {
                 match surreal_current_mode {
                     None => CurrentMode::default(),
                     Some(surreal_current_mode) =>
-                        CurrentMode::new(surreal_current_mode)
+                        CurrentMode::new(surreal_current_mode, base_data.get_modes())
                 }
             },
             mode_nodes_builder: |base_data| {

@@ -357,18 +357,6 @@ impl<'s> ItemNode<'s> {
         items
     }
 
-    pub(crate) fn is_core_work_or_neither(&self, filter: Filter) -> bool {
-        self.get_self_and_parents(filter)
-            .iter()
-            .any(|x| x.is_type_motivation_kind_core_or_neither())
-    }
-
-    pub(crate) fn is_non_core_work_or_neither(&self, filter: Filter) -> bool {
-        self.get_self_and_parents(filter)
-            .iter()
-            .any(|x| x.is_type_motivation_kind_non_core_or_neither())
-    }
-
     pub(crate) fn get_type(&self) -> &SurrealItemType {
         self.item.get_type()
     }

@@ -146,29 +146,10 @@ impl<'b> Item<'b> {
         )
     }
 
-    pub(crate) fn is_type_motivation_kind_core_or_neither(&self) -> bool {
-        matches!(
-            self.get_item_type(),
-            &SurrealItemType::Motivation(
-                SurrealMotivationKind::CoreWork | SurrealMotivationKind::DoesNotFitInCoreOrNonCore
-            )
-        )
-    }
-
     pub(crate) fn is_type_motivation_kind_core(&self) -> bool {
         matches!(
             self.get_item_type(),
             &SurrealItemType::Motivation(SurrealMotivationKind::CoreWork)
-        )
-    }
-
-    pub(crate) fn is_type_motivation_kind_non_core_or_neither(&self) -> bool {
-        matches!(
-            self.get_item_type(),
-            &SurrealItemType::Motivation(
-                SurrealMotivationKind::NonCoreWork
-                    | SurrealMotivationKind::DoesNotFitInCoreOrNonCore
-            )
         )
     }
 

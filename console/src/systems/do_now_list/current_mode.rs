@@ -1,93 +1,58 @@
+use surrealdb::RecordId;
+
 use crate::{
-    data_storage::surrealdb_layer::surreal_current_mode::{
-        SurrealCurrentMode, SurrealSelectedSingleMode,
-    },
-    node::{Filter, item_node::ItemNode},
+    base_data::mode::Mode, data_storage::surrealdb_layer::surreal_current_mode::SurrealCurrentMode,
+    node::item_node::ItemNode,
 };
 
 pub(crate) struct CurrentMode {
-    urgency_in_scope: Vec<SelectedSingleMode>,
-    importance_in_scope: Vec<SelectedSingleMode>,
-}
-
-#[derive(PartialEq, Eq)]
-pub(crate) enum SelectedSingleMode {
-    AllCoreMotivationalPurposes,
-    AllNonCoreMotivationalPurposes,
+    mode_id: Option<RecordId>,
+    mode_name: String,
 }
 
 impl Default for CurrentMode {
     fn default() -> Self {
-        //By default everything should be selected
         CurrentMode {
-            urgency_in_scope: vec![
-                SelectedSingleMode::AllCoreMotivationalPurposes,
-                SelectedSingleMode::AllNonCoreMotivationalPurposes,
-            ],
-            importance_in_scope: vec![
-                SelectedSingleMode::AllCoreMotivationalPurposes,
-                SelectedSingleMode::AllNonCoreMotivationalPurposes,
-            ],
-        }
-    }
-}
-
-impl SurrealSelectedSingleMode {
-    pub(crate) fn copy_to_items_in_scope_with_item_nodes(&self) -> SelectedSingleMode {
-        match self {
-            SurrealSelectedSingleMode::AllCoreMotivationalPurposes => {
-                SelectedSingleMode::AllCoreMotivationalPurposes
-            }
-            SurrealSelectedSingleMode::AllNonCoreMotivationalPurposes => {
-                SelectedSingleMode::AllNonCoreMotivationalPurposes
-            }
+            mode_id: None,
+            mode_name: "(no mode selected)".to_string(),
         }
     }
 }
 
 impl CurrentMode {
-    pub(crate) fn new(surreal_current_mode: &SurrealCurrentMode) -> CurrentMode {
-        let urgency_in_scope = surreal_current_mode
-            .urgency_in_scope
-            .iter()
-            .map(|urgency| urgency.copy_to_items_in_scope_with_item_nodes())
-            .collect::<Vec<_>>();
-        let importance_in_scope = surreal_current_mode
-            .importance_in_scope
-            .iter()
-            .map(|importance| importance.copy_to_items_in_scope_with_item_nodes())
-            .collect::<Vec<_>>();
+    pub(crate) fn new(
+        surreal_current_mode: &SurrealCurrentMode,
+        modes: &[Mode<'_>],
+    ) -> CurrentMode {
+        let mode_id = surreal_current_mode.current_mode.clone();
+        let mode_name = mode_id
+            .as_ref()
+            .and_then(|mode_id| {
+                modes
+                    .iter()
+                    .find(|mode| mode.get_surreal_id() == mode_id)
+                    .map(|mode| mode.get_name().to_string())
+            })
+            .unwrap_or_else(|| "(no mode selected)".to_string());
 
-        CurrentMode {
-            urgency_in_scope,
-            importance_in_scope,
-        }
+        CurrentMode { mode_id, mode_name }
+    }
+
+    pub(crate) fn get_mode_id(&self) -> Option<&RecordId> {
+        self.mode_id.as_ref()
+    }
+
+    pub(crate) fn get_name(&self) -> &str {
+        &self.mode_name
     }
 
     pub(crate) fn is_urgency_in_the_mode(&self, item_node: &ItemNode) -> bool {
-        is_in_scope(self.get_urgency_in_scope(), item_node)
+        let _ = item_node;
+        true
     }
 
     pub(crate) fn is_importance_in_the_mode(&self, item_node: &ItemNode) -> bool {
-        is_in_scope(self.get_importance_in_scope(), item_node)
+        let _ = item_node;
+        true
     }
-
-    pub(crate) fn get_urgency_in_scope(&self) -> &Vec<SelectedSingleMode> {
-        &self.urgency_in_scope
-    }
-
-    pub(crate) fn get_importance_in_scope(&self) -> &Vec<SelectedSingleMode> {
-        &self.importance_in_scope
-    }
-}
-
-fn is_in_scope(in_scope: &[SelectedSingleMode], item_node: &ItemNode) -> bool {
-    in_scope.iter().any(|x| match x {
-        SelectedSingleMode::AllCoreMotivationalPurposes => {
-            item_node.is_core_work_or_neither(Filter::Active)
-        }
-        SelectedSingleMode::AllNonCoreMotivationalPurposes => {
-            item_node.is_non_core_work_or_neither(Filter::Active)
-        }
-    })
 }
