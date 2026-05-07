@@ -3,10 +3,12 @@ use std::fmt::{self, Display, Formatter};
 use ahash::HashSet;
 use chrono::Utc;
 use inquire::{InquireError, MultiSelect, Select};
+use surrealdb::RecordId;
 use tokio::sync::mpsc::Sender;
 
 use crate::data_storage::surrealdb_layer::SurrealTrigger;
 
+use crate::systems::do_now_list::current_mode::CurrentMode;
 use crate::{
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands, surreal_in_the_moment_priority::SurrealPriorityKind,
@@ -24,6 +26,45 @@ use crate::{
 };
 
 use super::WhyInScopeAndActionWithItemStatus;
+
+#[derive(Clone)]
+enum PriorityScopeChoice<'e> {
+    CurrentMode { current_mode: &'e CurrentMode },
+    AllModes,
+}
+
+impl<'e> Display for PriorityScopeChoice<'e> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            PriorityScopeChoice::CurrentMode { current_mode } => {
+                write!(f, "Current mode ({})", current_mode.get_name())
+            }
+            PriorityScopeChoice::AllModes => write!(f, "All modes"),
+        }
+    }
+}
+
+fn prompt_for_priority_scope(do_now_list: &DoNowList) -> Result<Option<RecordId>, InquireError> {
+    let current_mode = do_now_list.get_current_mode();
+    if current_mode.get_mode_id().is_none() {
+        return Ok(None);
+    };
+
+    let choices = vec![
+        PriorityScopeChoice::CurrentMode { current_mode },
+        PriorityScopeChoice::AllModes,
+    ];
+    let selected = Select::new("Apply this priority comparison to:", choices)
+        .with_page_size(default_select_page_size())
+        .prompt()?;
+
+    match selected {
+        PriorityScopeChoice::CurrentMode { current_mode } => {
+            Ok(current_mode.get_mode_id().cloned())
+        }
+        PriorityScopeChoice::AllModes => Ok(None),
+    }
+}
 
 enum FinalPriorityWizardChoice {
     PickRandom,
@@ -78,6 +119,11 @@ pub(crate) async fn priority_wizard_loop<'a>(
     do_now_list: &DoNowList,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
+    println!(
+        "Current mode: {}",
+        do_now_list.get_current_mode().get_name()
+    );
+
     // Track items that have been selected already
     let mut selected_items = HashSet::default();
     let mut used_as_highest_priority = HashSet::default();
@@ -117,6 +163,15 @@ pub(crate) async fn priority_wizard_loop<'a>(
                     let random_idx = rand::random_range(0..unselected_items.len());
                     let random_choice = &unselected_items[random_idx];
 
+                    let for_mode = match prompt_for_priority_scope(do_now_list) {
+                        Ok(for_mode) => for_mode,
+                        Err(InquireError::OperationCanceled) => return Ok(()),
+                        Err(InquireError::OperationInterrupted) => return Err(()),
+                        Err(err) => {
+                            panic!("Unexpected error, try restarting the terminal: {}", err)
+                        }
+                    };
+
                     // Set this item as higher priority than all others for 1 minute
                     let now = Utc::now();
                     let one_minute_trigger = vec![SurrealTrigger::WallClockDateTime(
@@ -136,6 +191,7 @@ pub(crate) async fn priority_wizard_loop<'a>(
                             .send(DataLayerCommands::DeclareInTheMomentPriority {
                                 choice: random_choice.clone_to_surreal_action(),
                                 kind: SurrealPriorityKind::HighestPriority,
+                                for_mode: for_mode.clone(),
                                 not_chosen: other_choices,
                                 in_effect_until: one_minute_trigger,
                             })
@@ -255,6 +311,13 @@ pub(crate) async fn priority_wizard_loop<'a>(
 
         if !higher_priority_than.is_empty() {
             // User selected items this is higher priority than.
+            let for_mode = match prompt_for_priority_scope(do_now_list) {
+                Ok(for_mode) => for_mode,
+                Err(InquireError::OperationCanceled) => return Ok(()),
+                Err(InquireError::OperationInterrupted) => return Err(()),
+                Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+            };
+
             println!("How long should this priority comparison be in effect?");
             let now = Utc::now();
             let in_effect_until = prompt_for_triggers(None, &now, send_to_data_storage_layer).await;
@@ -266,6 +329,7 @@ pub(crate) async fn priority_wizard_loop<'a>(
                     .send(DataLayerCommands::DeclareInTheMomentPriority {
                         choice: selected_at_random.clone_to_surreal_action(),
                         kind: SurrealPriorityKind::HighestPriority,
+                        for_mode: for_mode.clone(),
                         not_chosen: vec![lower_priority_item.clone_to_surreal_action()],
                         in_effect_until: in_effect_until.clone(),
                     })
@@ -293,6 +357,15 @@ pub(crate) async fn priority_wizard_loop<'a>(
             };
 
             if !lower_priority_than.is_empty() {
+                let for_mode = match prompt_for_priority_scope(do_now_list) {
+                    Ok(for_mode) => for_mode,
+                    Err(InquireError::OperationCanceled) => return Ok(()),
+                    Err(InquireError::OperationInterrupted) => return Err(()),
+                    Err(err) => {
+                        panic!("Unexpected error, try restarting the terminal: {}", err)
+                    }
+                };
+
                 println!("How long should this priority comparison be in effect?");
                 let now = Utc::now();
                 let in_effect_until =
@@ -309,6 +382,7 @@ pub(crate) async fn priority_wizard_loop<'a>(
                     .send(DataLayerCommands::DeclareInTheMomentPriority {
                         choice: selected_at_random.clone_to_surreal_action(),
                         kind: SurrealPriorityKind::LowestPriority,
+                        for_mode: for_mode.clone(),
                         not_chosen: lower_priority_choices,
                         in_effect_until: in_effect_until.clone(),
                     })

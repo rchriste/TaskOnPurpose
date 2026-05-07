@@ -98,10 +98,16 @@ pub(crate) async fn present_pick_what_should_be_done_first_menu<'a>(
         .collect::<Vec<_>>();
 
     let starting_choice = rand::random_range(0..display_choices.len());
-    let choice = Select::new("Pick a priority?", display_choices)
-        .with_page_size(default_select_page_size())
-        .with_starting_cursor(starting_choice)
-        .prompt();
+    let choice = Select::new(
+        &format!(
+            "Pick a priority? (Current mode: {})",
+            do_now_list.get_current_mode().get_name()
+        ),
+        display_choices,
+    )
+    .with_page_size(default_select_page_size())
+    .with_starting_cursor(starting_choice)
+    .prompt();
     let choice = match choice {
         Ok(choice) => choice,
         Err(InquireError::OperationCanceled) => {

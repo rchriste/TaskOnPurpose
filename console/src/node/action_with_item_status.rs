@@ -195,47 +195,48 @@ impl<'s> WhyInScopeActionListsByUrgency<'s> {
     pub(crate) fn apply_in_the_moment_priorities(
         self,
         all_priorities: &'s [InTheMomentPriorityWithItemAction<'s>],
+        current_mode_id: Option<&RecordId>,
     ) -> Vec<UrgencyLevelItemWithItemStatus<'s>> {
         let mut ordered_bullet_list = Vec::new();
 
         if let Some(more_urgent_than_anything_including_scheduled) = self
             .more_urgent_than_anything_including_scheduled
-            .apply_in_the_moment_priorities(all_priorities)
+            .apply_in_the_moment_priorities(all_priorities, current_mode_id)
         {
             ordered_bullet_list.push(more_urgent_than_anything_including_scheduled);
         }
 
         if let Some(scheduled_any_mode) = self
             .scheduled_any_mode
-            .apply_in_the_moment_priorities(all_priorities)
+            .apply_in_the_moment_priorities(all_priorities, current_mode_id)
         {
             ordered_bullet_list.push(scheduled_any_mode);
         }
 
         if let Some(more_urgent_than_mode) = self
             .more_urgent_than_mode
-            .apply_in_the_moment_priorities(all_priorities)
+            .apply_in_the_moment_priorities(all_priorities, current_mode_id)
         {
             ordered_bullet_list.push(more_urgent_than_mode);
         }
 
         if let Some(in_the_mode_scheduled) = self
             .in_the_mode_scheduled
-            .apply_in_the_moment_priorities(all_priorities)
+            .apply_in_the_moment_priorities(all_priorities, current_mode_id)
         {
             ordered_bullet_list.push(in_the_mode_scheduled);
         }
 
         if let Some(in_the_mode_definitely_urgent) = self
             .in_the_mode_definitely_urgent
-            .apply_in_the_moment_priorities(all_priorities)
+            .apply_in_the_moment_priorities(all_priorities, current_mode_id)
         {
             ordered_bullet_list.push(in_the_mode_definitely_urgent);
         }
 
         if let Some(in_the_mode_maybe_urgent_and_by_importance) = self
             .in_the_mode_maybe_urgent_and_by_importance
-            .apply_in_the_moment_priorities(all_priorities)
+            .apply_in_the_moment_priorities(all_priorities, current_mode_id)
         {
             ordered_bullet_list.push(in_the_mode_maybe_urgent_and_by_importance);
         }
@@ -248,6 +249,7 @@ trait ApplyInTheMomentPriorities<'s> {
     fn apply_in_the_moment_priorities(
         self,
         all_priorities: &'s [InTheMomentPriorityWithItemAction<'s>],
+        current_mode_id: Option<&RecordId>,
     ) -> Option<UrgencyLevelItemWithItemStatus<'s>>;
 }
 
@@ -255,9 +257,14 @@ impl<'s> ApplyInTheMomentPriorities<'s> for Vec<WhyInScopeAndActionWithItemStatu
     fn apply_in_the_moment_priorities(
         self,
         all_priorities: &'s [InTheMomentPriorityWithItemAction<'s>],
+        current_mode_id: Option<&RecordId>,
     ) -> Option<UrgencyLevelItemWithItemStatus<'s>> {
         let mut choices = self.clone();
-        for priority in all_priorities.iter().filter(|x| x.is_active()) {
+        for priority in all_priorities
+            .iter()
+            .filter(|x| x.is_active())
+            .filter(|x| x.is_for_current_mode(current_mode_id))
+        {
             match priority.get_kind() {
                 SurrealPriorityKind::HighestPriority => {
                     if choices
@@ -372,7 +379,7 @@ mod tests {
         let blank_in_the_moment_priorities = calculated_data.get_in_the_moment_priorities();
 
         let dut = vec![why_in_scope_and_action_with_item_status];
-        let result = dut.apply_in_the_moment_priorities(blank_in_the_moment_priorities);
+        let result = dut.apply_in_the_moment_priorities(blank_in_the_moment_priorities, None);
 
         assert!(result.is_some());
         let result = result.expect("assert.is_some() should have passed");
@@ -441,7 +448,7 @@ mod tests {
         let blank_in_the_moment_priorities = calculated_data.get_in_the_moment_priorities();
 
         let dut = vec![first_item_action.clone(), second_item_action.clone()];
-        let result = dut.apply_in_the_moment_priorities(blank_in_the_moment_priorities);
+        let result = dut.apply_in_the_moment_priorities(blank_in_the_moment_priorities, None);
 
         assert!(result.is_some());
         let result = result.expect("assert.is_some() should have passed");
@@ -516,7 +523,7 @@ mod tests {
         let in_the_moment_priorities = calculated_data.get_in_the_moment_priorities();
 
         let dut = vec![first_item_action.clone(), second_item_action.clone()];
-        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities);
+        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities, None);
 
         assert!(result.is_some());
         let result = result.expect("assert.is_some() should have passed");
@@ -588,7 +595,7 @@ mod tests {
         let in_the_moment_priorities = calculated_data.get_in_the_moment_priorities();
 
         let dut = vec![first_item_action.clone(), second_item_action.clone()];
-        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities);
+        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities, None);
 
         assert!(result.is_some());
         let result = result.expect("assert.is_some() should have passed");
@@ -681,7 +688,7 @@ mod tests {
             second_item_action.clone(),
             third_item_action.clone(),
         ];
-        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities);
+        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities, None);
 
         assert!(result.is_some());
         let result = result.expect("assert.is_some() should have passed");
@@ -786,7 +793,7 @@ mod tests {
             second_item_action.clone(),
             third_item_action.clone(),
         ];
-        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities);
+        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities, None);
 
         assert!(result.is_some());
         let result = result.expect("assert.is_some() should have passed");
@@ -908,7 +915,7 @@ mod tests {
             second_item_action.clone(),
             third_item_action.clone(),
         ];
-        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities);
+        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities, None);
 
         assert!(result.is_some());
         let result = result.expect("assert.is_some() should have passed");
@@ -1021,7 +1028,7 @@ mod tests {
         let in_the_moment_priorities = calculated_data.get_in_the_moment_priorities();
 
         let dut = vec![first_item_action.clone(), second_item_action.clone()];
-        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities);
+        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities, None);
 
         assert!(result.is_some(), "Result should not be blank");
         let result = result.expect("assert.is_some() should have passed");
@@ -1138,7 +1145,7 @@ mod tests {
         let in_the_moment_priorities = calculated_data.get_in_the_moment_priorities();
 
         let dut = vec![first_item_action.clone(), second_item_action.clone()];
-        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities);
+        let result = dut.apply_in_the_moment_priorities(in_the_moment_priorities, None);
 
         assert!(result.is_some(), "Result should not be blank");
         let result = result.expect("assert.is_some() should have passed");

@@ -398,7 +398,10 @@ pub(crate) async fn present_do_now_list_menu(
         4
     };
     let selected = Select::new(
-        "Select from this \"Do Now\" list (default choice is recommended)|",
+        &format!(
+            "Select from this \"Do Now\" list (Current mode: {}) (default choice is recommended)|",
+            do_now_list.get_current_mode().get_name()
+        ),
         inquire_do_now_list,
     )
     .with_starting_cursor(starting_cursor)

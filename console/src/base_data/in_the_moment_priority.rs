@@ -80,4 +80,16 @@ impl<'s> InTheMomentPriorityWithItemAction<'s> {
     pub(crate) fn get_created(&self) -> &DateTime<Utc> {
         &self.created
     }
+
+    pub(crate) fn get_for_mode(&self) -> Option<&RecordId> {
+        self.surreal_in_the_moment_priority.for_mode.as_ref()
+    }
+
+    pub(crate) fn is_for_current_mode(&self, current_mode_id: Option<&RecordId>) -> bool {
+        match (self.get_for_mode(), current_mode_id) {
+            (None, _) => true,
+            (Some(_), None) => false,
+            (Some(for_mode), Some(current_mode_id)) => for_mode == current_mode_id,
+        }
+    }
 }

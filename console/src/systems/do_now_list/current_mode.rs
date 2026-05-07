@@ -5,6 +5,7 @@ use crate::{
     node::item_node::ItemNode,
 };
 
+#[derive(Clone)]
 pub(crate) struct CurrentMode {
     mode_id: Option<RecordId>,
     mode_name: String,

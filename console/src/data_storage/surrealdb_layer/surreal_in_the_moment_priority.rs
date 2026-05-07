@@ -16,6 +16,9 @@ pub(crate) struct SurrealInTheMomentPriority {
     pub(crate) in_effect_until: Vec<SurrealTrigger>,
 
     #[cfg_attr(test, builder(default))]
+    pub(crate) for_mode: Option<RecordId>,
+
+    #[cfg_attr(test, builder(default))]
     pub(crate) created: Datetime,
 }
 

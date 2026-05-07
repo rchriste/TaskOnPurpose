@@ -139,7 +139,10 @@ impl DoNowList {
 
                 let all_priorities = calculated_data.get_in_the_moment_priorities();
 
-                bullet_lists_by_urgency.apply_in_the_moment_priorities(all_priorities)
+                bullet_lists_by_urgency.apply_in_the_moment_priorities(
+                    all_priorities,
+                    calculated_data.get_current_mode().get_mode_id(),
+                )
             },
             upcoming_builder: |calculated_data| Upcoming::new(calculated_data, current_time),
         }

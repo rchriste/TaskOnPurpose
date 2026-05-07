@@ -106,6 +106,7 @@ pub(crate) enum DataLayerCommands {
     DeclareInTheMomentPriority {
         choice: SurrealAction,
         kind: SurrealPriorityKind,
+        for_mode: Option<RecordId>,
         not_chosen: Vec<SurrealAction>,
         in_effect_until: Vec<SurrealTrigger>,
     },
@@ -436,6 +437,7 @@ pub(crate) async fn data_storage_start_and_run(
             Some(DataLayerCommands::DeclareInTheMomentPriority {
                 choice,
                 kind,
+                for_mode,
                 not_chosen,
                 in_effect_until,
             }) => {
@@ -443,6 +445,7 @@ pub(crate) async fn data_storage_start_and_run(
                     id: None,
                     not_chosen,
                     in_effect_until,
+                    for_mode,
                     created: Utc::now().into(),
                     choice,
                     kind,
