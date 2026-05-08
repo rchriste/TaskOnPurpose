@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::RecordId;
+use surrealdb::types::{RecordId, SurrealValue};
 
 use crate::new_mode::NewMode;
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, surrealdb::types::SurrealValue)]
 pub(crate) struct SurrealMode {
     pub(crate) id: Option<RecordId>,
     pub(crate) name: String,

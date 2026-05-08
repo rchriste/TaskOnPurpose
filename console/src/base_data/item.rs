@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
-use surrealdb::{RecordId, sql::Datetime};
+use surrealdb::types::{Datetime, RecordId};
 
 use crate::{
     calculated_data::parent_lookup::ParentLookup,
@@ -370,13 +370,13 @@ mod tests {
     #[test]
     fn to_do_item_with_a_parent_returns_the_parent_when_find_parents_is_called() {
         let smaller_item = SurrealItemBuilder::default()
-            .id(Some(("surreal_item", "1").into()))
+            .id(Some(RecordId::new("surreal_item", "1")))
             .summary("Smaller item")
             .item_type(SurrealItemType::Action)
             .build()
             .unwrap();
         let parent_item = SurrealItemBuilder::default()
-            .id(Some(("surreal_item", "2").into()))
+            .id(Some(RecordId::new("surreal_item", "2")))
             .summary("Parent item")
             .finished(None)
             .item_type(SurrealItemType::Action)
@@ -409,13 +409,13 @@ mod tests {
     #[test]
     fn when_active_smaller_items_in_priority_order_exist_has_children_returns_true() {
         let smaller_item = SurrealItemBuilder::default()
-            .id(Some(("surreal_item", "1").into()))
+            .id(Some(RecordId::new("surreal_item", "1")))
             .summary("Smaller item")
             .item_type(SurrealItemType::Action)
             .build()
             .unwrap();
         let parent_item = SurrealItemBuilder::default()
-            .id(Some(("surreal_item", "2").into()))
+            .id(Some(RecordId::new("surreal_item", "2")))
             .summary("Parent item")
             .item_type(SurrealItemType::Action)
             .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {

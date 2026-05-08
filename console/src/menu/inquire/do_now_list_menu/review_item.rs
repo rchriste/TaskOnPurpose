@@ -4,7 +4,7 @@ use better_term::{Color, Style};
 use chrono::Utc;
 use inquire::Select;
 use itertools::Itertools;
-use surrealdb::{RecordId, sql::Datetime};
+use surrealdb::types::{Datetime, RecordId};
 use tokio::sync::mpsc::Sender;
 
 use crate::{

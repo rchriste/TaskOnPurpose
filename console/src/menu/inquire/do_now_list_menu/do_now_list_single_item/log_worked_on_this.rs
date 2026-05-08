@@ -3,7 +3,7 @@ use std::{fmt::Display, time::Duration};
 use ahash::HashSet;
 use chrono::{DateTime, Local, Utc};
 use inquire::{InquireError, Select, Text};
-use surrealdb::sql::Datetime;
+use surrealdb::types::{Datetime, RecordId};
 use tokio::sync::{mpsc::Sender, oneshot};
 
 use crate::{
@@ -149,7 +149,7 @@ async fn ask_when_started_and_stopped(
     when_selected: &DateTime<Utc>,
     bullet_list_created: &DateTime<Utc>,
     base_data: &BaseData,
-    selected_item_id: &surrealdb::RecordId,
+    selected_item_id: &RecordId,
 ) -> Result<(DateTime<Utc>, DateTime<Utc>), ()> {
     let when_last_time_finished = get_when_the_last_item_finished(send_to_data_storage_layer).await;
 

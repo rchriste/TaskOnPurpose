@@ -243,6 +243,7 @@ fn compare_motivation_first(a: &DisplayItemNode<'_>, b: &DisplayItemNode<'_>) ->
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use surrealdb::types::RecordId;
 
     use crate::{
         calculated_data::parent_lookup::ParentLookup,
@@ -262,25 +263,25 @@ mod tests {
         // Create a parent with a child - parent has child in smaller_items list
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "parent").into()))
+                .id(Some(RecordId::new("surreal_item", "parent")))
                 .summary("Parent Item")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: ("surreal_item", "child").into(),
+                    surreal_item_id: RecordId::new("surreal_item", "child"),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "child").into()))
+                .id(Some(RecordId::new("surreal_item", "child")))
                 .summary("Child Item")
                 .item_type(SurrealItemType::Action)
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: ("surreal_item", "grandchild").into(),
+                    surreal_item_id: RecordId::new("surreal_item", "grandchild"),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "grandchild").into()))
+                .id(Some(RecordId::new("surreal_item", "grandchild")))
                 .summary("Grandchild Item")
                 .item_type(SurrealItemType::Action)
                 .build()
@@ -354,25 +355,25 @@ mod tests {
         // Create a parent with a child
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "parent").into()))
+                .id(Some(RecordId::new("surreal_item", "parent")))
                 .summary("Parent Item")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: ("surreal_item", "child").into(),
+                    surreal_item_id: RecordId::new("surreal_item", "child"),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "child").into()))
+                .id(Some(RecordId::new("surreal_item", "child")))
                 .summary("Child Item")
                 .item_type(SurrealItemType::Action)
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: ("surreal_item", "grandchild").into(),
+                    surreal_item_id: RecordId::new("surreal_item", "grandchild"),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "grandchild").into()))
+                .id(Some(RecordId::new("surreal_item", "grandchild")))
                 .summary("Grandchild Item")
                 .item_type(SurrealItemType::Action)
                 .build()
@@ -450,25 +451,25 @@ mod tests {
     fn multiline_tree_reversed_root_has_no_tree_characters() {
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "root").into()))
+                .id(Some(RecordId::new("surreal_item", "root")))
                 .summary("Root Item")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: ("surreal_item", "child").into(),
+                    surreal_item_id: RecordId::new("surreal_item", "child"),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "child").into()))
+                .id(Some(RecordId::new("surreal_item", "child")))
                 .summary("Child Item")
                 .item_type(SurrealItemType::Action)
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: ("surreal_item", "grandchild").into(),
+                    surreal_item_id: RecordId::new("surreal_item", "grandchild"),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "grandchild").into()))
+                .id(Some(RecordId::new("surreal_item", "grandchild")))
                 .summary("Grandchild Item")
                 .item_type(SurrealItemType::Action)
                 .build()
@@ -527,16 +528,16 @@ mod tests {
     fn single_line_format_shows_inline_parents() {
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "parent").into()))
+                .id(Some(RecordId::new("surreal_item", "parent")))
                 .summary("Parent Item")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: ("surreal_item", "child").into(),
+                    surreal_item_id: RecordId::new("surreal_item", "child"),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "child").into()))
+                .id(Some(RecordId::new("surreal_item", "child")))
                 .summary("Child Item")
                 .item_type(SurrealItemType::Action)
                 .build()
@@ -591,7 +592,7 @@ mod tests {
     fn multiline_tree_handles_item_with_no_parents() {
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "standalone").into()))
+                .id(Some(RecordId::new("surreal_item", "standalone")))
                 .summary("Standalone Item")
                 .item_type(SurrealItemType::Action)
                 .build()
@@ -645,7 +646,7 @@ mod tests {
     fn multiline_tree_reversed_handles_item_with_no_parents() {
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "standalone").into()))
+                .id(Some(RecordId::new("surreal_item", "standalone")))
                 .summary("Standalone Item")
                 .item_type(SurrealItemType::Action)
                 .build()
@@ -699,7 +700,7 @@ mod tests {
     fn single_line_handles_item_with_no_parents() {
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(("surreal_item", "standalone").into()))
+                .id(Some(RecordId::new("surreal_item", "standalone")))
                 .summary("Standalone Item")
                 .item_type(SurrealItemType::Action)
                 .build()

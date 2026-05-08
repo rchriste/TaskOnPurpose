@@ -1,4 +1,4 @@
-use surrealdb::RecordId;
+use surrealdb::types::RecordId;
 
 use crate::base_data::mode::Mode;
 

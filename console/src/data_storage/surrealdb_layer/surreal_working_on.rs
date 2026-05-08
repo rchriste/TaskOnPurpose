@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::{RecordId, sql::Datetime};
+use surrealdb::types::{Datetime, RecordId, SurrealValue};
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, surrealdb::types::SurrealValue)]
 pub(crate) struct SurrealWorkingOn {
     pub(crate) id: Option<RecordId>,
     pub(crate) version: u32,
@@ -20,7 +20,7 @@ impl SurrealWorkingOn {
 
     pub(crate) fn new(item: RecordId, when_started: Datetime) -> Self {
         SurrealWorkingOn {
-            id: Some((Self::TABLE_NAME, "working_on").into()),
+            id: Some(RecordId::new(Self::TABLE_NAME, "working_on")),
             version: 0,
             item,
             when_started,

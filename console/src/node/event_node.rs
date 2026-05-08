@@ -1,5 +1,5 @@
 use ahash::HashMap;
-use surrealdb::RecordId;
+use surrealdb::types::RecordId;
 
 use crate::{
     base_data::event::Event,
@@ -68,7 +68,7 @@ impl<'s> EventNode<'s> {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use surrealdb::RecordId;
+    use surrealdb::types::RecordId;
 
     use crate::{
         base_data::BaseData,
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn event_node_is_inactive_when_event_is_triggered() {
         let now = Utc::now();
-        let event_id: RecordId = ("events", "1").into();
+        let event_id: RecordId = RecordId::new("events", "1");
 
         let surreal_event = SurrealEvent {
             id: Some(event_id.clone()),
@@ -94,7 +94,7 @@ mod tests {
         };
 
         let active_item_waiting_on_event = SurrealItemBuilder::default()
-            .id(Some(("item", "1").into()))
+            .id(Some(RecordId::new("item", "1")))
             .summary("Active item waiting")
             .item_type(SurrealItemType::Action)
             .dependencies(vec![SurrealDependency::AfterEvent(event_id.clone())])
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn event_node_is_inactive_when_no_active_items_wait_on_it() {
         let now = Utc::now();
-        let event_id: RecordId = ("events", "1").into();
+        let event_id: RecordId = RecordId::new("events", "1");
 
         let surreal_event = SurrealEvent {
             id: Some(event_id.clone()),
@@ -132,7 +132,7 @@ mod tests {
         };
 
         let unrelated_active_item = SurrealItemBuilder::default()
-            .id(Some(("item", "1").into()))
+            .id(Some(RecordId::new("item", "1")))
             .summary("Active item not waiting")
             .item_type(SurrealItemType::Action)
             .build()
@@ -158,7 +158,7 @@ mod tests {
     #[test]
     fn event_node_is_active_when_untriggered_and_has_active_waiting_item() {
         let now = Utc::now();
-        let event_id: RecordId = ("events", "1").into();
+        let event_id: RecordId = RecordId::new("events", "1");
 
         let surreal_event = SurrealEvent {
             id: Some(event_id.clone()),
@@ -169,7 +169,7 @@ mod tests {
         };
 
         let active_item_waiting_on_event = SurrealItemBuilder::default()
-            .id(Some(("item", "1").into()))
+            .id(Some(RecordId::new("item", "1")))
             .summary("Active item waiting")
             .item_type(SurrealItemType::Action)
             .dependencies(vec![SurrealDependency::AfterEvent(event_id.clone())])

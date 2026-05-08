@@ -22,7 +22,7 @@ use parent_back_to_a_motivation::present_parent_back_to_a_motivation_menu;
 use pick_item_review_frequency::present_pick_item_review_frequency_menu;
 use review_item::present_review_item_menu;
 use search::present_search_menu;
-use surrealdb::RecordId;
+use surrealdb::types::RecordId;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
@@ -692,6 +692,7 @@ pub(crate) fn present_do_now_help_workarounds() -> Result<(), ()> {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use surrealdb::types::RecordId;
 
     use crate::{
         base_data::BaseData,
@@ -709,7 +710,7 @@ mod tests {
     #[test]
     fn declare_event_not_shown_when_all_items_waiting_on_event_are_finished() {
         let now = Utc::now();
-        let event_id: surrealdb::RecordId = ("events", "1").into();
+        let event_id: RecordId = RecordId::new("events", "1");
 
         let surreal_event = SurrealEvent {
             id: Some(event_id.clone()),
@@ -720,7 +721,7 @@ mod tests {
         };
 
         let finished_item_waiting_on_event = SurrealItemBuilder::default()
-            .id(Some(("item", "1").into()))
+            .id(Some(RecordId::new("item", "1")))
             .summary("Finished item waiting on event")
             .item_type(SurrealItemType::Action)
             .finished(Some(now.into()))
@@ -761,7 +762,7 @@ mod tests {
         use chrono::Duration;
 
         let now = Utc::now();
-        let event_id: surrealdb::RecordId = ("events", "1").into();
+        let event_id: RecordId = RecordId::new("events", "1");
 
         let surreal_event = SurrealEvent {
             id: Some(event_id.clone()),
@@ -773,7 +774,7 @@ mod tests {
 
         // Create three items with different creation times
         let oldest_item = SurrealItemBuilder::default()
-            .id(Some(("item", "1").into()))
+            .id(Some(RecordId::new("item", "1")))
             .summary("Oldest item")
             .item_type(SurrealItemType::Action)
             .created(now - Duration::days(3))
@@ -782,7 +783,7 @@ mod tests {
             .unwrap();
 
         let middle_item = SurrealItemBuilder::default()
-            .id(Some(("item", "2").into()))
+            .id(Some(RecordId::new("item", "2")))
             .summary("Middle item")
             .item_type(SurrealItemType::Action)
             .created(now - Duration::days(2))
@@ -791,7 +792,7 @@ mod tests {
             .unwrap();
 
         let newest_item = SurrealItemBuilder::default()
-            .id(Some(("item", "3").into()))
+            .id(Some(RecordId::new("item", "3")))
             .summary("Newest item")
             .item_type(SurrealItemType::Action)
             .created(now - Duration::days(1))
@@ -842,7 +843,7 @@ mod tests {
     #[test]
     fn event_node_is_active_when_items_waiting_are_not_finished() {
         let now = Utc::now();
-        let event_id: surrealdb::RecordId = ("events", "1").into();
+        let event_id: RecordId = RecordId::new("events", "1");
 
         let surreal_event = SurrealEvent {
             id: Some(event_id.clone()),
@@ -853,7 +854,7 @@ mod tests {
         };
 
         let active_item = SurrealItemBuilder::default()
-            .id(Some(("item", "1").into()))
+            .id(Some(RecordId::new("item", "1")))
             .summary("Active item waiting on event")
             .item_type(SurrealItemType::Action)
             .dependencies(vec![SurrealDependency::AfterEvent(event_id.clone())])
@@ -880,7 +881,7 @@ mod tests {
     #[test]
     fn event_node_is_not_active_when_all_waiting_items_are_finished() {
         let now = Utc::now();
-        let event_id: surrealdb::RecordId = ("events", "1").into();
+        let event_id: RecordId = RecordId::new("events", "1");
 
         let surreal_event = SurrealEvent {
             id: Some(event_id.clone()),
@@ -891,7 +892,7 @@ mod tests {
         };
 
         let finished_item = SurrealItemBuilder::default()
-            .id(Some(("item", "1").into()))
+            .id(Some(RecordId::new("item", "1")))
             .summary("Finished item")
             .item_type(SurrealItemType::Action)
             .finished(Some(now.into()))
@@ -924,7 +925,7 @@ mod tests {
         use super::EventTrigger;
 
         let now = Utc::now();
-        let event_id: surrealdb::RecordId = ("events", "1").into();
+        let event_id: RecordId = RecordId::new("events", "1");
 
         let surreal_event = SurrealEvent {
             id: Some(event_id.clone()),
@@ -935,7 +936,7 @@ mod tests {
         };
 
         let item1 = SurrealItemBuilder::default()
-            .id(Some(("item", "1").into()))
+            .id(Some(RecordId::new("item", "1")))
             .summary("Item 1")
             .item_type(SurrealItemType::Action)
             .dependencies(vec![SurrealDependency::AfterEvent(event_id.clone())])
@@ -943,7 +944,7 @@ mod tests {
             .unwrap();
 
         let item2 = SurrealItemBuilder::default()
-            .id(Some(("item", "2").into()))
+            .id(Some(RecordId::new("item", "2")))
             .summary("Item 2")
             .item_type(SurrealItemType::Action)
             .dependencies(vec![SurrealDependency::AfterEvent(event_id.clone())])

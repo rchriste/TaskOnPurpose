@@ -2,7 +2,7 @@ use ahash::{HashMap, HashSet};
 use chrono::{DateTime, Utc};
 use current_mode::CurrentMode;
 use ouroboros::self_referencing;
-use surrealdb::RecordId;
+use surrealdb::types::RecordId;
 
 pub(crate) mod current_mode;
 

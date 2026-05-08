@@ -1,5 +1,5 @@
 use derive_builder::Builder;
-use surrealdb::RecordId;
+use surrealdb::types::RecordId;
 
 #[derive(Builder)]
 #[builder(setter(into))]

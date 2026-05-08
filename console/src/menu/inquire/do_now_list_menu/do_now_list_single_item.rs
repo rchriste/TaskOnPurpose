@@ -10,7 +10,7 @@ use ahash::{HashMap, HashSet};
 use better_term::{Color, Style};
 use chrono::{DateTime, Local, Utc};
 use inquire::{InquireError, Select, Text};
-use surrealdb::RecordId;
+use surrealdb::types::RecordId;
 use tokio::sync::mpsc::Sender;
 use urgency_plan::present_set_ready_and_urgency_plan_menu;
 
@@ -125,7 +125,7 @@ impl Display for DoNowListSingleItemSelection<'_> {
             }
             Self::WorkedOnThis { started } => {
                 if let Some(started) = started {
-                    let started = started.when_started.0;
+                    let started = started.when_started.into_inner();
                     let started: DateTime<Local> = started.into();
 
                     write!(

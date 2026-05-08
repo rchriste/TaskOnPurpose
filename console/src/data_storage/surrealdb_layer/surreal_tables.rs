@@ -1,6 +1,6 @@
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
-use surrealdb::RecordId;
+use surrealdb::types::RecordId;
 use tokio::sync::mpsc::Sender;
 
 #[cfg(test)]

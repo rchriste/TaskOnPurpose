@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::{RecordId, sql::Datetime};
+use surrealdb::types::{Datetime, RecordId, SurrealValue};
 
 use crate::new_time_spent::NewTimeSpent;
 
 use super::{surreal_in_the_moment_priority::SurrealAction, surreal_item::SurrealUrgency};
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, surrealdb::types::SurrealValue)]
 pub(crate) struct SurrealTimeSpent {
     pub(crate) id: Option<RecordId>,
     pub(crate) version: u32,
@@ -23,14 +23,16 @@ impl From<SurrealTimeSpent> for Option<RecordId> {
     }
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Hash)]
+#[derive(
+    PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Hash, surrealdb::types::SurrealValue,
+)]
 pub(crate) enum SurrealWhyInScope {
     Importance,
     Urgency,
     MenuNavigation,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, surrealdb::types::SurrealValue)]
 pub(crate) enum SurrealDedication {
     PrimaryTask,
     BackgroundTask,
@@ -55,7 +57,7 @@ impl SurrealTimeSpent {
     pub(crate) const TABLE_NAME: &'static str = "time_spent_log";
 }
 
-#[derive(PartialEq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Serialize, Deserialize, Clone, Debug, surrealdb::types::SurrealValue)]
 pub(crate) struct SurrealTimeSpentVersion0 {
     pub(crate) id: Option<RecordId>,
     pub(crate) version: u32,

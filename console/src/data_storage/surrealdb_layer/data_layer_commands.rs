@@ -1,13 +1,11 @@
 use chrono::Utc;
 use std::{future::Future, pin::Pin, time::Duration};
 use surrealdb::{
-    Error as SurrealError, RecordId, Surreal,
-    engine::any::{Any, IntoEndpoint, connect},
-    err::Error as CoreError,
-    kvs::Datastore,
+    Error as SurrealError, Surreal,
+    engine::any::{Any, connect},
     opt::PatchOp,
     opt::auth,
-    sql::Datetime,
+    types::{Datetime, RecordId, SurrealValue},
 };
 use tokio::{
     join,
@@ -140,7 +138,7 @@ where
 /// Generic helper function to delete a record from the database.
 async fn delete_record<T>(db: &Surreal<Any>, id: &RecordId, type_name: &str) -> Result<(), String>
 where
-    T: serde::de::DeserializeOwned,
+    T: serde::de::DeserializeOwned + SurrealValue,
 {
     let deleted: Option<T> = db
         .delete(id)
@@ -157,7 +155,7 @@ fn create_delete_stream<'a, T, R>(
     type_name: &'static str,
 ) -> impl futures::Stream<Item = DeleteFuture<'a>>
 where
-    T: serde::de::DeserializeOwned + 'a,
+    T: serde::de::DeserializeOwned + SurrealValue + 'a,
     R: Into<Option<RecordId>> + 'a,
 {
     stream::iter(records).map(move |record| {
@@ -205,28 +203,9 @@ pub(crate) async fn data_storage_start_and_run(
     config: SurrealDbConnectionConfig,
 ) {
     let endpoint = config.endpoint.clone();
-    let db = match connect(endpoint.as_str()).await {
-        Ok(db) => db,
-        Err(err) => {
-            // If the stored data on disk is from an older SurrealDB storage format,
-            // automatically apply SurrealDB's built-in storage fixes and retry.
-            if matches!(err, SurrealError::Db(CoreError::OutdatedStorageVersion)) {
-                println!(
-                    "Detected outdated SurrealDB storage version at '{}'. Upgrading storage in place...",
-                    endpoint
-                );
-                if let Err(upgrade_err) = upgrade_surreal_storage(endpoint.as_str()).await {
-                    panic!(
-                        "Failed to upgrade SurrealDB storage automatically: {:?}",
-                        upgrade_err
-                    );
-                }
-                connect(endpoint.as_str()).await.unwrap()
-            } else {
-                panic!("Failed to connect to SurrealDB: {:?}", err);
-            }
-        }
-    };
+    let db = connect_with_auto_upgrade(endpoint.as_str())
+        .await
+        .unwrap_or_else(|err| panic!("{}", err));
 
     if let Some(auth_cfg) = &config.auth
         && let Err(err) = authenticate_surrealdb(&db, &config, auth_cfg).await
@@ -526,25 +505,25 @@ async fn authenticate_surrealdb(
     match level.as_str() {
         "root" => {
             db.signin(auth::Root {
-                username: auth_cfg.username.as_str(),
-                password: auth_cfg.password.as_str(),
+                username: auth_cfg.username.clone(),
+                password: auth_cfg.password.clone(),
             })
             .await?;
         }
         "ns" | "namespace" => {
             db.signin(auth::Namespace {
-                namespace: conn.namespace.as_str(),
-                username: auth_cfg.username.as_str(),
-                password: auth_cfg.password.as_str(),
+                namespace: conn.namespace.clone(),
+                username: auth_cfg.username.clone(),
+                password: auth_cfg.password.clone(),
             })
             .await?;
         }
         "db" | "database" => {
             db.signin(auth::Database {
-                namespace: conn.namespace.as_str(),
-                database: conn.database.as_str(),
-                username: auth_cfg.username.as_str(),
-                password: auth_cfg.password.as_str(),
+                namespace: conn.namespace.clone(),
+                database: conn.database.clone(),
+                username: auth_cfg.username.clone(),
+                password: auth_cfg.password.clone(),
             })
             .await?;
         }
@@ -555,8 +534,8 @@ async fn authenticate_surrealdb(
                 other
             );
             db.signin(auth::Root {
-                username: auth_cfg.username.as_str(),
-                password: auth_cfg.password.as_str(),
+                username: auth_cfg.username.clone(),
+                password: auth_cfg.password.clone(),
             })
             .await?;
         }
@@ -587,39 +566,14 @@ fn auth_configs_equivalent(a: &Option<SurrealAuthConfig>, b: &Option<SurrealAuth
 fn is_surrealdb_error_retryable(err: &SurrealError) -> bool {
     // This is the common shape for embedded file engine contention:
     // Db(Tx("IO error: ... /LOCK: No locks available"))
-    match err {
-        SurrealError::Db(CoreError::Tx(msg)) => {
-            msg.contains("No locks available") || msg.contains("/LOCK") || msg.contains("\\LOCK")
-        }
-        _ => false,
-    }
+    let msg = err.to_string();
+    msg.contains("No locks available") || msg.contains("/LOCK") || msg.contains("\\LOCK")
 }
 
 async fn connect_with_auto_upgrade(endpoint: &str) -> Result<Surreal<Any>, String> {
     match connect(endpoint).await {
         Ok(db) => Ok(db),
         Err(err) => {
-            if matches!(err, SurrealError::Db(CoreError::OutdatedStorageVersion)) {
-                eprintln!(
-                    "Detected outdated SurrealDB storage version at '{}'. Upgrading storage in place...",
-                    endpoint
-                );
-                upgrade_surreal_storage(endpoint)
-                    .await
-                    .map_err(|upgrade_err| {
-                        format!(
-                            "Failed to upgrade SurrealDB storage automatically: {:?}",
-                            upgrade_err
-                        )
-                    })?;
-                return connect(endpoint).await.map_err(|retry_err| {
-                    format!(
-                        "Failed to connect to SurrealDB after upgrade: {:?}",
-                        retry_err
-                    )
-                });
-            }
-
             // Transient file-lock contention (common if another process is running).
             if is_surrealdb_error_retryable(&err) {
                 let max_attempts = 10;
@@ -1129,33 +1083,12 @@ async fn ensure_namespace_and_migrate_if_needed(
     );
 }
 
-/// Upgrade an embedded/local SurrealDB datastore to the latest storage version.
-/// This uses SurrealDB-core's `Version::fix` to apply any required on-disk migrations.
-async fn upgrade_surreal_storage(endpoint: &str) -> Result<(), CoreError> {
-    #[allow(deprecated)]
-    let ep = endpoint.into_endpoint().map_err(|e| match e {
-        SurrealError::Db(db) => db,
-        other => CoreError::Ds(other.to_string()),
-    })?;
-
-    // Match SurrealDB embedded engine behavior: TiKV uses full URL, others use parsed path.
-    let ds_endpoint = if ep.url.scheme() == "tikv" {
-        ep.url.as_str().to_owned()
-    } else {
-        ep.path.clone()
-    };
-
-    let ds = Datastore::new(&ds_endpoint).await?;
-    let ds = std::sync::Arc::new(ds);
-    let version = ds.get_version().await?;
-    if version.is_latest() {
-        return Ok(());
-    }
-    version.fix(ds).await?;
-    Ok(())
-}
-
 pub(crate) async fn load_from_surrealdb_upgrade_if_needed(db: &Surreal<Any>) -> SurrealTables {
+    fn is_missing_table_error(err: &surrealdb::Error) -> bool {
+        let err_string = err.to_string();
+        err_string.contains("table") && err_string.contains("does not exist")
+    }
+
     //TODO: I should do some timings to see if starting all of these get_all requests and then doing awaits on them later really is faster in Rust. Or if they just for sure don't start until the await. For example I could call this function as many times as possible in 10 sec and time that and then see how many times I can call that function written like this and then again with the get_all being right with the await to make sure that code like this is worth it perf wise.
     let all_items = db.select(SurrealItem::TABLE_NAME);
     let time_spent_log = db.select(SurrealTimeSpent::TABLE_NAME);
@@ -1175,45 +1108,79 @@ pub(crate) async fn load_from_surrealdb_upgrade_if_needed(db: &Surreal<Any>) -> 
             }
         }
         Err(err) => {
-            let err_string = err.to_string();
-            if err_string.contains("IAM error")
-                || err_string.contains("Not enough permissions")
-                || err_string.contains("not enough permissions")
-            {
-                panic!(
-                    "SurrealDB permissions error while reading items table: {}\n\
+            if is_missing_table_error(&err) {
+                Vec::new()
+            } else {
+                let err_string = err.to_string();
+                if err_string.contains("IAM error")
+                    || err_string.contains("Not enough permissions")
+                    || err_string.contains("not enough permissions")
+                {
+                    panic!(
+                        "SurrealDB permissions error while reading items table: {}\n\
                      If connecting to a remote SurrealDB, you likely need to authenticate.\n\
                      Try: --surreal-auth-username <user> --surreal-auth-password <pass> [--surreal-auth-level root|ns|db]\n",
-                    err_string
-                );
+                        err_string
+                    );
+                }
+                println!("Upgrading items table because of issue: {}", err);
+                upgrade_items_table(db).await;
+                db.select(SurrealItem::TABLE_NAME).await.unwrap()
             }
-            println!("Upgrading items table because of issue: {}", err);
-            upgrade_items_table(db).await;
-            db.select(SurrealItem::TABLE_NAME).await.unwrap()
         }
     };
 
     let time_spent_log = match time_spent_log.await {
         Ok(time_spent_log) => time_spent_log,
         Err(err) => {
-            println!("Time spent log is missing because of issue: {}", err);
-            upgrade_time_spent_log(db).await;
-            db.select(SurrealTimeSpent::TABLE_NAME).await.unwrap()
+            if is_missing_table_error(&err) {
+                Vec::new()
+            } else {
+                println!("Time spent log is missing because of issue: {}", err);
+                upgrade_time_spent_log(db).await;
+                db.select(SurrealTimeSpent::TABLE_NAME).await.unwrap()
+            }
         }
     };
 
-    let surreal_in_the_moment_priorities = surreal_in_the_moment_priorities.await.unwrap();
+    let surreal_in_the_moment_priorities = match surreal_in_the_moment_priorities.await {
+        Ok(values) => values,
+        Err(err) if is_missing_table_error(&err) => Vec::new(),
+        Err(err) => panic!("Unable to load in-the-moment priorities: {}", err),
+    };
 
-    let surreal_modes = surreal_modes.await.unwrap();
+    let surreal_current_modes = match surreal_current_modes.await {
+        Ok(values) => values,
+        Err(err) if is_missing_table_error(&err) => Vec::new(),
+        Err(err) => panic!("Unable to load current modes: {}", err),
+    };
+
+    let surreal_modes = match surreal_modes.await {
+        Ok(values) => values,
+        Err(err) if is_missing_table_error(&err) => Vec::new(),
+        Err(err) => panic!("Unable to load modes: {}", err),
+    };
+
+    let surreal_events = match surreal_events.await {
+        Ok(values) => values,
+        Err(err) if is_missing_table_error(&err) => Vec::new(),
+        Err(err) => panic!("Unable to load events: {}", err),
+    };
+
+    let surreal_working_on = match surreal_working_on.await {
+        Ok(values) => values,
+        Err(err) if is_missing_table_error(&err) => Vec::new(),
+        Err(err) => panic!("Unable to load working_on: {}", err),
+    };
 
     SurrealTables {
         surreal_items: all_items,
         surreal_time_spent_log: time_spent_log,
         surreal_in_the_moment_priorities,
-        surreal_current_modes: surreal_current_modes.await.unwrap(),
+        surreal_current_modes,
         surreal_modes,
-        surreal_events: surreal_events.await.unwrap(),
-        surreal_working_on: surreal_working_on.await.unwrap(),
+        surreal_events,
+        surreal_working_on,
     }
 }
 
@@ -1295,7 +1262,7 @@ async fn set_working_on(item: RecordId, when_started: Datetime, db: &Surreal<Any
 }
 
 async fn clear_working_on(db: &Surreal<Any>) {
-    let id: RecordId = (SurrealWorkingOn::TABLE_NAME, "working_on").into();
+    let id = RecordId::new(SurrealWorkingOn::TABLE_NAME, "working_on");
     // Ignore if it doesn't exist.
     let _deleted: Option<SurrealWorkingOn> = db.delete(id).await.unwrap();
 }

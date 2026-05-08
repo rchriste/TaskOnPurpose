@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::RecordId;
+use surrealdb::types::{RecordId, SurrealValue};
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, surrealdb::types::SurrealValue)]
 pub(crate) struct SurrealCurrentMode {
     pub(crate) id: Option<RecordId>,
     pub(crate) version: u32,
@@ -24,7 +24,10 @@ pub(crate) struct NewCurrentMode {
 impl From<NewCurrentMode> for SurrealCurrentMode {
     fn from(new_current_mode: NewCurrentMode) -> Self {
         SurrealCurrentMode {
-            id: Some((SurrealCurrentMode::TABLE_NAME, "current_mode").into()),
+            id: Some(RecordId::new(
+                SurrealCurrentMode::TABLE_NAME,
+                "current_mode",
+            )),
             version: 0,
             current_mode: new_current_mode.current_mode,
         }

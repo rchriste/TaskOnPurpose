@@ -1,8 +1,5 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::{
-    RecordId,
-    sql::{Datetime, Duration},
-};
+use surrealdb::types::{Datetime, Duration, RecordId, SurrealValue};
 
 pub(crate) mod data_layer_commands;
 pub(crate) mod surreal_current_mode;
@@ -14,7 +11,7 @@ pub(crate) mod surreal_tables;
 pub(crate) mod surreal_time_spent;
 pub(crate) mod surreal_working_on;
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) enum SurrealTrigger {
     WallClockDateTime(Datetime),
     LoggedInvocationCount {
@@ -29,7 +26,7 @@ pub(crate) enum SurrealTrigger {
     },
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) enum SurrealItemsInScope {
     All,
     Include(Vec<RecordId>),

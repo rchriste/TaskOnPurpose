@@ -1,13 +1,13 @@
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
-use surrealdb::{RecordId, sql::Datetime};
+use surrealdb::types::{Datetime, RecordId, SurrealValue};
 
 use super::SurrealTrigger;
 
 //derive Builder is only for tests, I tried adding it just for cfg_attr(test... but that
 //gave me false errors in the editor (rust-analyzer) so I am just going to try including
 //it always to see if that addresses these phantom errors. Nov2023.
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Builder)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Builder, SurrealValue)]
 pub(crate) struct SurrealInTheMomentPriority {
     pub(crate) id: Option<RecordId>,
     pub(crate) choice: SurrealAction,
@@ -28,7 +28,7 @@ impl From<SurrealInTheMomentPriority> for Option<RecordId> {
     }
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) enum SurrealAction {
     SetReadyAndUrgency(RecordId),
     ParentBackToAMotivation(RecordId),
@@ -51,7 +51,7 @@ impl SurrealAction {
     }
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) enum SurrealPriorityKind {
     HighestPriority,
     LowestPriority,

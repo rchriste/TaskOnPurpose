@@ -9,10 +9,7 @@ use std::{
 use chrono::{DateTime, TimeDelta, Utc};
 use derive_builder::Builder;
 use serde::{Deserialize, Serialize};
-use surrealdb::{
-    RecordId,
-    sql::{Datetime, Duration},
-};
+use surrealdb::types::{Datetime, Duration, RecordId, SurrealValue};
 
 use crate::{
     base_data::item::Item,
@@ -24,7 +21,7 @@ use super::SurrealTrigger;
 //derive Builder is only for tests, I tried adding it just for cfg_attr(test... but that
 //gave me false errors in the editor (rust-analyzer) so I am just going to try including
 //it always to see if that addresses these phantom errors. Nov2023.
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Builder)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Builder, SurrealValue)]
 #[builder(setter(into))]
 pub(crate) struct SurrealItem {
     pub(crate) id: Option<RecordId>,
@@ -132,7 +129,7 @@ impl SurrealItem {
     }
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default, SurrealValue)]
 pub(crate) enum SurrealItemType {
     #[default]
     Undeclared,
@@ -144,7 +141,7 @@ pub(crate) enum SurrealItemType {
     PersonOrGroup,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default, SurrealValue)]
 pub(crate) enum SurrealMotivationKind {
     #[default]
     NotSet,
@@ -153,7 +150,7 @@ pub(crate) enum SurrealMotivationKind {
     DoesNotFitInCoreOrNonCore,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default, SurrealValue)]
 pub(crate) enum SurrealHowMuchIsInMyControl {
     #[default]
     NotSet,
@@ -162,7 +159,7 @@ pub(crate) enum SurrealHowMuchIsInMyControl {
     LargelyOutOfMyControl,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default, SurrealValue)]
 pub(crate) enum Responsibility {
     #[default]
     ProactiveActionToTake,
@@ -171,7 +168,7 @@ pub(crate) enum Responsibility {
     TrackingToBeAwareOf,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) enum SurrealDependency {
     AfterDateTime(Datetime),
     DuringItem(RecordId), //TODO: This should be removed as it is no longer used
@@ -179,19 +176,19 @@ pub(crate) enum SurrealDependency {
     AfterEvent(RecordId),
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) struct SurrealItemReview {
     pub(crate) last_reviewed: Option<Datetime>,
     pub(crate) review_frequency: SurrealFrequency,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) enum SurrealReviewGuidance {
     AlwaysReviewChildrenWithThisItem,
     ReviewChildrenSeparately,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, surrealdb::types::SurrealValue)]
 pub(crate) enum SurrealFrequency {
     NoneReviewWithParent,
     Range {
@@ -368,7 +365,7 @@ impl Mul<&EqF32> for TimeDelta {
     }
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) enum SurrealLap {
     AlwaysTimer(Duration),
     ///The amount of time that should be logged or worked on before the lap count is 1.
@@ -381,13 +378,13 @@ pub(crate) enum SurrealLap {
     InherentFromParent,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) enum SurrealOrderedSubItem {
     SubItem { surreal_item_id: RecordId },
     //This could be expanded to state multiple items that are at the same priority meaning you would go with lap count or something else to determine which to work on first.
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default, SurrealValue)]
 pub(crate) enum NotesLocation {
     #[default]
     None,
@@ -395,7 +392,7 @@ pub(crate) enum NotesLocation {
     WebLink(String),
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) enum SurrealScheduled {
     Exact {
         start: Datetime,
@@ -442,7 +439,7 @@ impl SurrealScheduled {
     }
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, SurrealValue)]
 pub(crate) enum SurrealUrgencyPlan {
     //If any of the triggers, trigger then the urgency will escalate to the later urgency
     WillEscalate {
@@ -453,7 +450,17 @@ pub(crate) enum SurrealUrgencyPlan {
     StaysTheSame(SurrealUrgency),
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, PartialOrd, Ord)]
+#[derive(
+    PartialEq,
+    Eq,
+    Serialize,
+    Deserialize,
+    Clone,
+    Debug,
+    PartialOrd,
+    Ord,
+    surrealdb::types::SurrealValue,
+)]
 pub(crate) enum SurrealUrgency {
     MoreUrgentThanAnythingIncludingScheduled,
     ScheduledAnyMode(SurrealScheduled),
@@ -485,7 +492,7 @@ impl Hash for SurrealUrgency {
 //derive Builder is only for tests, I tried adding it just for cfg_attr(test... but that
 //gave me false errors in the editor (rust-analyzer) so I am just going to try including
 //it always to see if that addresses these phantom errors. Nov2023.
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Builder)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Builder, SurrealValue)]
 #[builder(setter(into))]
 pub(crate) struct SurrealItemOldVersion {
     pub(crate) id: Option<RecordId>,

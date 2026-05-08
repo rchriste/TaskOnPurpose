@@ -2,7 +2,7 @@ use std::{iter, time::Duration};
 
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
-use surrealdb::RecordId;
+use surrealdb::types::RecordId;
 
 use crate::{
     base_data::{event::Event, item::Item},
