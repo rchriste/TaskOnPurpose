@@ -1,0 +1,121 @@
+direction: down
+layout: elk
+
+# Onion Architecture for OnPurpose (inner → outer)
+
+onion: {
+  label: "Onion Architecture"
+  style: { fill: "#ffffff" }
+
+  infrastructure: {
+    label: "Infrastructure (Outer Layer)"
+    style: { fill: "#F7F7F7" }
+
+    ui: {
+      label: "UI / Display"
+      inquire: "Inquire Menus"
+      display: "Display Formatters + TreeRenderer"
+      ui_pass6: "Pass 6: Present & Act"
+    }
+
+    storage: {
+      label: "Data Storage"
+
+      db_client: "SurrealDB Client"
+      kv_engines: "KV engines: kv-mem, kv-rocksdb"
+
+      channel: "tokio::sync::mpsc(20)"
+      commands: "DataLayerCommands"
+      data_handler: "Data Storage Layer (async task)"
+
+      raw: {
+        label: "Raw Data"
+        surreal_tables: "SurrealTables\n- surreal_items\n- surreal_events\n- surreal_time_spent_log\n- surreal_modes\n- surreal_current_modes\n- surreal_in_the_moment_priorities"
+      }
+
+      builders: {
+        label: "Domain Constructors"
+        make_items: "make_items(now) -> Item<'_> map"
+        make_events: "make_events() -> Event<'_> map"
+        make_modes: "make_modes() -> Mode<'_> iter"
+        make_time_spent: "make_time_spent_log() -> TimeSpent<'_> iter"
+        get_priorities: "get_surreal_in_the_moment_priorities()"
+        get_current_mode: "get_surreal_current_modes()"
+      }
+    }
+
+    application: {
+      label: "Application (Use Cases)"
+      style: { fill: "#EAF4FF" }
+      systems_label: "Systems"
+      donowlist: {
+        label: "DoNowList"
+        dn_anchor: "DoNowList Core"
+        dn_ordered: "ordered_do_now_list"
+        dn_upcoming: "Upcoming (embedded)"
+      }
+      app_anchor: "App Flow"
+      app_pass5: "Pass 5: Assemble Lists"
+
+      domain_services: {
+        label: "Domain Services"
+        style: { fill: "#D9ECFF" }
+        node: "Node models: ItemNode, ActionWithItemStatus, ModeNode, WhyInScope*"
+        domain_anchor: "Domain Flow"
+        pass3_nodes: "Pass 3: Build Node graph"
+        pass4_analysis: "Pass 4: Multi-pass analysis (deps → urgency → actions)"
+
+        domain_model: {
+          label: "Domain Model (Core)"
+          style: { fill: "#C8E4FF" }
+          core_anchor: "Core Flow"
+          pass1_load: "Pass 1: Load raw → BaseData"
+          pass2_calc: "Pass 2: Build CalculatedData"
+        }
+      }
+    }
+  }
+}
+
+# Intentional inward dependencies only
+onion.infrastructure.ui -> onion.infrastructure.application.app_anchor: "invokes use-cases"
+onion.infrastructure.storage -> onion.infrastructure.application.app_anchor: "message-passing"
+onion.infrastructure.application.app_anchor -> onion.infrastructure.application.domain_services.domain_anchor: "coordinates domain actions"
+onion.infrastructure.application.domain_services.domain_anchor -> onion.infrastructure.application.domain_services.domain_model.core_anchor: "pure domain logic"
+
+# Storage shapes domain objects from raw tables
+onion.infrastructure.storage -> onion.infrastructure.application.domain_services.domain_model.core_anchor: "constructs domain data"
+
+# Storage internals (data flow)
+onion.infrastructure.storage.channel -> onion.infrastructure.storage.data_handler: "receive"
+onion.infrastructure.storage.data_handler -> onion.infrastructure.storage.db_client: "query"
+onion.infrastructure.storage.db_client -> onion.infrastructure.storage.raw.surreal_tables: "hydrate"
+onion.infrastructure.storage.raw.surreal_tables -> onion.infrastructure.storage.builders: "expose"
+onion.infrastructure.storage.builders -> onion.infrastructure.application.domain_services.domain_model.pass1_load: "yield BaseData inputs"
+
+# Explicit multi-pass flow (inner to outer)
+onion.infrastructure.application.domain_services.domain_model.core_anchor -> onion.infrastructure.application.domain_services.domain_model.pass1_load: "start Pass 1"
+onion.infrastructure.application.domain_services.domain_model.pass1_load -> onion.infrastructure.application.domain_services.domain_model.pass2_calc: "to Pass 2"
+onion.infrastructure.application.domain_services.domain_model.pass2_calc -> onion.infrastructure.application.domain_services.pass3_nodes: "feed Pass 3"
+
+onion.infrastructure.application.domain_services.domain_anchor -> onion.infrastructure.application.domain_services.pass3_nodes: "to Pass 3"
+onion.infrastructure.application.domain_services.pass3_nodes -> onion.infrastructure.application.domain_services.pass4_analysis: "to Pass 4"
+
+# Note: Passes 3/4/5 are conditional; pipeline can stop after Pass 2 when sufficient
+optional_pass_note: {
+  label: "Pass 3/4/5 run only if more detail is needed; may short-circuit after Pass 2"
+}
+optional_pass_note -> onion.infrastructure.application.domain_services.pass3_nodes: "if needed"
+optional_pass_note -> onion.infrastructure.application.domain_services.pass4_analysis: "if needed"
+optional_pass_note -> onion.infrastructure.application.app_pass5: "if needed"
+
+# Handoff from domain analysis to assembling system outputs
+onion.infrastructure.application.domain_services.pass4_analysis -> onion.infrastructure.application.app_pass5: "handoff to Pass 5"
+
+onion.infrastructure.application.app_anchor -> onion.infrastructure.application.app_pass5: "to Pass 5"
+onion.infrastructure.application.app_pass5 -> onion.infrastructure.application.donowlist.dn_anchor: "build DoNowList (includes Upcoming)"
+onion.infrastructure.application.donowlist.dn_anchor -> onion.infrastructure.application.donowlist.dn_ordered: "ordered list"
+onion.infrastructure.application.donowlist.dn_anchor -> onion.infrastructure.application.donowlist.dn_upcoming: "upcoming view"
+onion.infrastructure.application.donowlist.dn_ordered -> onion.infrastructure.ui.ui_pass6: "render list"
+onion.infrastructure.application.donowlist.dn_upcoming -> onion.infrastructure.ui.ui_pass6: "render upcoming"
+onion.infrastructure.application.donowlist.dn_upcoming -> onion.infrastructure.ui.ui_pass6: "render upcoming"
