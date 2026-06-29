@@ -190,9 +190,10 @@ pub(crate) async fn priority_wizard_loop<'a>(
                         send_to_data_storage_layer
                             .send(DataLayerCommands::DeclareInTheMomentPriority {
                                 choice: random_choice.clone_to_surreal_action(),
-                                kind: SurrealPriorityKind::HighestPriority,
+                                kind: SurrealPriorityKind::HighestPriority {
+                                    not_chosen: other_choices,
+                                },
                                 for_mode: for_mode.clone(),
-                                not_chosen: other_choices,
                                 in_effect_until: one_minute_trigger,
                             })
                             .await
@@ -328,9 +329,10 @@ pub(crate) async fn priority_wizard_loop<'a>(
                 send_to_data_storage_layer
                     .send(DataLayerCommands::DeclareInTheMomentPriority {
                         choice: selected_at_random.clone_to_surreal_action(),
-                        kind: SurrealPriorityKind::HighestPriority,
+                        kind: SurrealPriorityKind::HighestPriority {
+                            not_chosen: vec![lower_priority_item.clone_to_surreal_action()],
+                        },
                         for_mode: for_mode.clone(),
-                        not_chosen: vec![lower_priority_item.clone_to_surreal_action()],
                         in_effect_until: in_effect_until.clone(),
                     })
                     .await
@@ -381,9 +383,10 @@ pub(crate) async fn priority_wizard_loop<'a>(
                 send_to_data_storage_layer
                     .send(DataLayerCommands::DeclareInTheMomentPriority {
                         choice: selected_at_random.clone_to_surreal_action(),
-                        kind: SurrealPriorityKind::LowestPriority,
+                        kind: SurrealPriorityKind::LowestPriority {
+                            not_chosen: lower_priority_choices,
+                        },
                         for_mode: for_mode.clone(),
-                        not_chosen: lower_priority_choices,
                         in_effect_until: in_effect_until.clone(),
                     })
                     .await

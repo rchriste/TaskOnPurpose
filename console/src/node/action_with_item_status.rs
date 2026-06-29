@@ -5,10 +5,9 @@ use itertools::Itertools;
 use surrealdb::RecordId;
 
 use crate::{
-    base_data::in_the_moment_priority::InTheMomentPriorityWithItemAction,
+    base_data::in_the_moment_priority::{InTheMomentPriorityWithItemAction, PriorityKind},
     data_storage::surrealdb_layer::{
-        surreal_in_the_moment_priority::{SurrealAction, SurrealPriorityKind},
-        surreal_item::SurrealUrgency,
+        surreal_in_the_moment_priority::SurrealAction, surreal_item::SurrealUrgency,
     },
 };
 
@@ -265,34 +264,34 @@ impl<'s> ApplyInTheMomentPriorities<'s> for Vec<WhyInScopeAndActionWithItemStatu
             .filter(|x| x.is_active())
             .filter(|x| x.is_for_current_mode(current_mode_id))
         {
-            match priority.get_kind() {
-                SurrealPriorityKind::HighestPriority => {
+            match priority.get_priority_kind() {
+                PriorityKind::HighestPriority { not_chosen } => {
                     if choices
                         .iter()
                         .any(|item_action| priority.get_choice() == item_action.get_action())
                     {
-                        for lower_priority in priority.get_not_chosen() {
-                            if let Some((i, _)) = choices
-                                .iter()
-                                .find_position(|x| x.get_action() == lower_priority)
-                            {
+                        for lower_priority in not_chosen {
+                            if let Some((i, _)) = choices.iter().find_position(|x| {
+                                x.get_surreal_record_id() == lower_priority.get_surreal_record_id()
+                            }) {
                                 choices.swap_remove(i);
                             }
                         }
                     }
                 }
-                SurrealPriorityKind::LowestPriority => {
+                PriorityKind::LowestPriority { not_chosen } => {
                     if let Some((position, _)) = choices.iter().find_position(|item_action| {
                         priority.get_choice() == item_action.get_action()
                     }) && choices.iter().any(|item_action| {
-                        priority
-                            .get_not_chosen()
-                            .iter()
-                            .any(|lower_priority| item_action.get_action() == lower_priority)
+                        not_chosen.iter().any(|lower_priority| {
+                            item_action.get_surreal_record_id()
+                                == lower_priority.get_surreal_record_id()
+                        })
                     }) {
                         choices.swap_remove(position);
                     }
                 }
+                PriorityKind::NotInMode => {}
             }
         }
 
@@ -480,13 +479,14 @@ mod tests {
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
             .id(Some(("surreal_in_the_moment_priority", "1").into()))
-            .kind(SurrealPriorityKind::HighestPriority)
+            .kind(SurrealPriorityKind::HighestPriority {
+                not_chosen: vec![SurrealAction::MakeProgress(
+                    second_item.id.clone().expect("hard coded to a value"),
+                )],
+            })
             .choice(SurrealAction::MakeProgress(
                 first_item.id.clone().expect("hard coded to a value"),
             ))
-            .not_chosen(vec![SurrealAction::MakeProgress(
-                second_item.id.clone().expect("hard coded to a value"),
-            )])
             .in_effect_until(vec![SurrealTrigger::WallClockDateTime(in_an_hour.into())])
             .build()
             .unwrap();
@@ -552,13 +552,14 @@ mod tests {
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
             .id(Some(("surreal_in_the_moment_priority", "1").into()))
-            .kind(SurrealPriorityKind::LowestPriority)
+            .kind(SurrealPriorityKind::LowestPriority {
+                not_chosen: vec![SurrealAction::MakeProgress(
+                    second_item.id.clone().expect("hard coded to a value"),
+                )],
+            })
             .choice(SurrealAction::MakeProgress(
                 first_item.id.clone().expect("hard coded to a value"),
             ))
-            .not_chosen(vec![SurrealAction::MakeProgress(
-                second_item.id.clone().expect("hard coded to a value"),
-            )])
             .in_effect_until(vec![SurrealTrigger::WallClockDateTime(in_an_hour.into())])
             .build()
             .unwrap();
@@ -629,13 +630,14 @@ mod tests {
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
             .id(Some(("surreal_in_the_moment_priority", "1").into()))
-            .kind(SurrealPriorityKind::HighestPriority)
+            .kind(SurrealPriorityKind::HighestPriority {
+                not_chosen: vec![SurrealAction::MakeProgress(
+                    second_item.id.clone().expect("hard coded to a value"),
+                )],
+            })
             .choice(SurrealAction::MakeProgress(
                 first_item.id.clone().expect("hard coded to a value"),
             ))
-            .not_chosen(vec![SurrealAction::MakeProgress(
-                second_item.id.clone().expect("hard coded to a value"),
-            )])
             .in_effect_until(vec![SurrealTrigger::WallClockDateTime(in_an_hour.into())])
             .build()
             .unwrap();
@@ -734,13 +736,14 @@ mod tests {
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
             .id(Some(("surreal_in_the_moment_priority", "1").into()))
-            .kind(SurrealPriorityKind::LowestPriority)
+            .kind(SurrealPriorityKind::LowestPriority {
+                not_chosen: vec![SurrealAction::MakeProgress(
+                    second_item.id.clone().expect("hard coded to a value"),
+                )],
+            })
             .choice(SurrealAction::MakeProgress(
                 first_item.id.clone().expect("hard coded to a value"),
             ))
-            .not_chosen(vec![SurrealAction::MakeProgress(
-                second_item.id.clone().expect("hard coded to a value"),
-            )])
             .in_effect_until(vec![SurrealTrigger::WallClockDateTime(in_an_hour.into())])
             .build()
             .unwrap();
@@ -841,25 +844,27 @@ mod tests {
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let highest_in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
             .id(Some(("surreal_in_the_moment_priority", "1").into()))
-            .kind(SurrealPriorityKind::HighestPriority)
+            .kind(SurrealPriorityKind::HighestPriority {
+                not_chosen: vec![SurrealAction::MakeProgress(
+                    second_item.id.clone().expect("hard coded to a value"),
+                )],
+            })
             .choice(SurrealAction::MakeProgress(
                 first_item.id.clone().expect("hard coded to a value"),
             ))
-            .not_chosen(vec![SurrealAction::MakeProgress(
-                second_item.id.clone().expect("hard coded to a value"),
-            )])
             .in_effect_until(vec![SurrealTrigger::WallClockDateTime(in_an_hour.into())])
             .build()
             .unwrap();
         let lowest_in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
             .id(Some(("surreal_in_the_moment_priority", "3").into()))
-            .kind(SurrealPriorityKind::LowestPriority)
+            .kind(SurrealPriorityKind::LowestPriority {
+                not_chosen: vec![SurrealAction::MakeProgress(
+                    first_item.id.clone().expect("hard coded to a value"),
+                )],
+            })
             .choice(SurrealAction::MakeProgress(
                 third_item.id.clone().expect("hard coded to a value"),
             ))
-            .not_chosen(vec![SurrealAction::MakeProgress(
-                first_item.id.clone().expect("hard coded to a value"),
-            )])
             .in_effect_until(vec![SurrealTrigger::WallClockDateTime(in_an_hour.into())])
             .build()
             .unwrap();
@@ -976,14 +981,19 @@ mod tests {
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let lowest_in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
             .id(Some(("surreal_in_the_moment_priority", "1").into()))
-            .kind(SurrealPriorityKind::LowestPriority)
+            .kind(SurrealPriorityKind::LowestPriority {
+                not_chosen: vec![
+                    SurrealAction::MakeProgress(
+                        first_item.id.clone().expect("hard coded to a value"),
+                    ),
+                    SurrealAction::MakeProgress(
+                        second_item.id.clone().expect("hard coded to a value"),
+                    ),
+                ],
+            })
             .choice(SurrealAction::MakeProgress(
                 third_item.id.clone().expect("hard coded to a value"),
             ))
-            .not_chosen(vec![
-                SurrealAction::MakeProgress(first_item.id.clone().expect("hard coded to a value")),
-                SurrealAction::MakeProgress(second_item.id.clone().expect("hard coded to a value")),
-            ])
             .in_effect_until(vec![SurrealTrigger::WallClockDateTime(in_an_hour.into())])
             .build()
             .unwrap();
@@ -1093,14 +1103,14 @@ mod tests {
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let highest_in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
             .id(Some(("surreal_in_the_moment_priority", "1").into()))
-            .kind(SurrealPriorityKind::HighestPriority)
+            .kind(SurrealPriorityKind::HighestPriority {
+                not_chosen: vec![SurrealAction::MakeProgress(
+                    second_item.id.clone().expect("hard coded to a value"),
+                )],
+            })
             .choice(SurrealAction::MakeProgress(
                 third_item.id.clone().expect("hard coded to a value"),
             ))
-            .not_chosen(vec![
-                SurrealAction::MakeProgress(first_item.id.clone().expect("hard coded to a value")),
-                SurrealAction::MakeProgress(second_item.id.clone().expect("hard coded to a value")),
-            ])
             .in_effect_until(vec![SurrealTrigger::WallClockDateTime(in_an_hour.into())])
             .build()
             .unwrap();

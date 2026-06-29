@@ -79,7 +79,7 @@ impl CalculatedData {
                 let all_items = base_data.get_items();
                 let time_spent_log = base_data.get_time_spent_log();
                 let mut in_the_moment_priorities = base_data
-                    .get_surreal_in_the_moment_priorities()
+                    .get_in_the_moment_priorities()
                     .iter()
                     .map(|x| {
                         InTheMomentPriorityWithItemAction::new(

@@ -123,12 +123,12 @@ fn find_a_valid_order<'s>(
         let (mut start, duration): (DateTime<Utc>, Duration) = match to_schedule {
             SurrealScheduled::Exact {
                 start, duration, ..
-            } => (start.clone().into(), (*duration).into()),
+            } => (start.clone().into(), duration.clone().into()),
             SurrealScheduled::Range {
                 start_range,
                 duration,
                 ..
-            } => (start_range.0.clone().into(), (*duration).into()),
+            } => ((*start_range.0), (*duration).into()),
         };
         //I'm looking for the earliest available time that fits to schedule this item
         if earliest_starting_time > &start {
