@@ -181,25 +181,25 @@ mod tests {
         node::{Filter, item_node::ItemNode},
     };
     use chrono::Utc;
-    use surrealdb::types::RecordId;
+    use surrealdb::RecordId;
 
     #[test]
     fn motivations_are_sorted_alphabetically_when_selecting_a_parent() {
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "1")))
+                .id(Some(("surreal_item", "1").into()))
                 .summary("Zebra motivation")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "2")))
+                .id(Some(("surreal_item", "2").into()))
                 .summary("Apple motivation")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "3")))
+                .id(Some(("surreal_item", "3").into()))
                 .summary("Goal item")
                 .item_type(SurrealItemType::Goal(SurrealHowMuchIsInMyControl::NotSet))
                 .build()
@@ -216,9 +216,9 @@ mod tests {
         let events = surreal_tables.make_events();
         let time_spent_log = surreal_tables.make_time_spent_log().collect::<Vec<_>>();
 
-        let zebra_id: RecordId = RecordId::new("surreal_item", "1");
-        let apple_id: RecordId = RecordId::new("surreal_item", "2");
-        let goal_id: RecordId = RecordId::new("surreal_item", "3");
+        let zebra_id: RecordId = ("surreal_item", "1").into();
+        let apple_id: RecordId = ("surreal_item", "2").into();
+        let goal_id: RecordId = ("surreal_item", "3").into();
 
         let zebra_node = ItemNode::new(
             items.get(&zebra_id).expect("Item exists"),

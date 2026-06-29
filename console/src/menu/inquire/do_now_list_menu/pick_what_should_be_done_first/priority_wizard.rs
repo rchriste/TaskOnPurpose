@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use ahash::HashSet;
 use chrono::Utc;
 use inquire::{InquireError, MultiSelect, Select};
-use surrealdb::types::RecordId;
+use surrealdb::RecordId;
 use tokio::sync::mpsc::Sender;
 
 use crate::data_storage::surrealdb_layer::SurrealTrigger;

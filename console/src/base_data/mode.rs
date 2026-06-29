@@ -1,4 +1,4 @@
-use surrealdb::types::RecordId;
+use surrealdb::RecordId;
 
 use crate::data_storage::surrealdb_layer::surreal_mode::SurrealMode;
 

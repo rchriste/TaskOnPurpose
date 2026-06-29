@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use derive_builder::Builder;
-use surrealdb::types::Datetime;
+use surrealdb::sql::Datetime;
 
 use crate::{
     data_storage::surrealdb_layer::surreal_item::{

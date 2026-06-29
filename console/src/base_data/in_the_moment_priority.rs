@@ -1,6 +1,6 @@
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
-use surrealdb::types::{Datetime, RecordId};
+use surrealdb::{RecordId, sql::Datetime};
 
 use crate::{
     data_storage::surrealdb_layer::surreal_in_the_moment_priority::{

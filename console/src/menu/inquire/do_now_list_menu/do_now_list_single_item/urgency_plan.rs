@@ -1257,7 +1257,6 @@ pub(crate) async fn present_set_ready_and_urgency_plan_menu(
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use surrealdb::types::RecordId;
 
     use crate::{
         calculated_data::parent_lookup::ParentLookup,
@@ -1281,7 +1280,7 @@ mod tests {
         // When no parents exist, should return None
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "child")))
+                .id(Some(("surreal_item", "child").into()))
                 .summary("Child Item with no parents")
                 .item_type(SurrealItemType::Action)
                 .build()
@@ -1330,19 +1329,19 @@ mod tests {
         // When a single parent exists with urgency, should return that urgency plan
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "parent")))
+                .id(Some(("surreal_item", "parent").into()))
                 .summary("Parent Item")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(
                     SurrealUrgency::InTheModeDefinitelyUrgent,
                 )))
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "child"),
+                    surreal_item_id: ("surreal_item", "child").into(),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "child")))
+                .id(Some(("surreal_item", "child").into()))
                 .summary("Child Item")
                 .item_type(SurrealItemType::Action)
                 .build()
@@ -1401,31 +1400,31 @@ mod tests {
         // When multiple parents exist, should select the most urgent one
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "parent1")))
+                .id(Some(("surreal_item", "parent1").into()))
                 .summary("Parent 1 - Less Urgent")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(
                     SurrealUrgency::InTheModeByImportance,
                 )))
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "child"),
+                    surreal_item_id: ("surreal_item", "child").into(),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "parent2")))
+                .id(Some(("surreal_item", "parent2").into()))
                 .summary("Parent 2 - More Urgent")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(
                     SurrealUrgency::InTheModeDefinitelyUrgent,
                 )))
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "child"),
+                    surreal_item_id: ("surreal_item", "child").into(),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "child")))
+                .id(Some(("surreal_item", "child").into()))
                 .summary("Child Item")
                 .item_type(SurrealItemType::Action)
                 .build()
@@ -1484,7 +1483,7 @@ mod tests {
         // When no active parents have urgency, should fall back to checking all parents
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "finished_parent")))
+                .id(Some(("surreal_item", "finished_parent").into()))
                 .summary("Finished Parent")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .finished(Some(Utc::now().into()))
@@ -1492,12 +1491,12 @@ mod tests {
                     SurrealUrgency::InTheModeDefinitelyUrgent,
                 )))
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "child"),
+                    surreal_item_id: ("surreal_item", "child").into(),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "child")))
+                .id(Some(("surreal_item", "child").into()))
                 .summary("Child Item")
                 .item_type(SurrealItemType::Action)
                 .build()
@@ -1556,16 +1555,16 @@ mod tests {
         // When parents exist but none have urgency plans, should return None
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "parent")))
+                .id(Some(("surreal_item", "parent").into()))
                 .summary("Parent Item without urgency")
                 .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "child"),
+                    surreal_item_id: ("surreal_item", "child").into(),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "child")))
+                .id(Some(("surreal_item", "child").into()))
                 .summary("Child Item")
                 .item_type(SurrealItemType::Action)
                 .build()

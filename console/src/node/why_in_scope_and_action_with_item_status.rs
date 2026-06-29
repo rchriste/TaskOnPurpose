@@ -1,7 +1,7 @@
 use std::{hash::Hash, iter::once};
 
 use ahash::HashSet;
-use surrealdb::types::RecordId;
+use surrealdb::RecordId;
 
 use crate::data_storage::surrealdb_layer::{
     surreal_in_the_moment_priority::SurrealAction, surreal_time_spent::SurrealWhyInScope,

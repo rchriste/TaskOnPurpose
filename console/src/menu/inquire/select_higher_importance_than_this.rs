@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use inquire::Select;
-use surrealdb::types::RecordId;
+use surrealdb::RecordId;
 
 use crate::{
     base_data::item::Item, display::display_item::DisplayItem,
