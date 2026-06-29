@@ -3,5 +3,6 @@
 # CI/release workflows override this with `RUSTFLAGS=-C target-cpu=generic`
 # to keep published binaries broadly compatible.
 
-[build]
-rustflags = ["-C", "target-cpu=native"]
+# Comment out so we can see if this is causing the mac build to fail
+# [build]
+# rustflags = ["-C", "target-cpu=native"]
