@@ -1,5 +1,5 @@
 use ahash::{HashMap, HashMapExt};
-use surrealdb::types::RecordId;
+use surrealdb::RecordId;
 
 use crate::base_data::item::Item;
 

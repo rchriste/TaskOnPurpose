@@ -1,5 +1,5 @@
 use ahash::HashMap;
-use surrealdb::types::RecordId;
+use surrealdb::RecordId;
 
 use crate::{
     display::{DisplayStyle, display_item::DisplayItem, display_urgency_plan::DisplayUrgency},

@@ -2,7 +2,7 @@ use std::{hash::Hash, mem};
 
 use ahash::HashMap;
 use itertools::Itertools;
-use surrealdb::types::RecordId;
+use surrealdb::RecordId;
 
 use crate::{
     base_data::in_the_moment_priority::InTheMomentPriorityWithItemAction,
@@ -325,7 +325,6 @@ mod tests {
     use ahash::HashSet;
     use chrono::Utc;
     use itertools::chain;
-    use surrealdb::types::RecordId;
 
     use crate::{
         base_data::BaseData,
@@ -357,7 +356,7 @@ mod tests {
     fn apply_in_the_moment_priorities_when_only_one_item_is_given_with_no_in_the_moment_priorities_then_that_one_item_is_returned()
      {
         let only_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "1")))
+            .id(Some(("surreal_item", "1").into()))
             .summary("Only item")
             .build()
             .unwrap();
@@ -408,12 +407,12 @@ mod tests {
     fn apply_in_the_moment_priorities_when_only_two_items_are_given_pick_between_them_is_returned()
     {
         let first_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "1")))
+            .id(Some(("surreal_item", "1").into()))
             .summary("First item")
             .build()
             .unwrap();
         let second_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "2")))
+            .id(Some(("surreal_item", "2").into()))
             .summary("Second item")
             .build()
             .unwrap();
@@ -468,19 +467,19 @@ mod tests {
     fn apply_in_the_moment_priorities_when_two_items_are_given_and_one_is_the_highest_in_the_moment_priority_that_one_is_returned()
      {
         let first_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "1")))
+            .id(Some(("surreal_item", "1").into()))
             .summary("First item")
             .build()
             .unwrap();
         let second_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "2")))
+            .id(Some(("surreal_item", "2").into()))
             .summary("Second item")
             .build()
             .unwrap();
 
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
-            .id(Some(RecordId::new("surreal_in_the_moment_priority", "1")))
+            .id(Some(("surreal_in_the_moment_priority", "1").into()))
             .kind(SurrealPriorityKind::HighestPriority)
             .choice(SurrealAction::MakeProgress(
                 first_item.id.clone().expect("hard coded to a value"),
@@ -540,19 +539,19 @@ mod tests {
     fn apply_in_the_moment_priorities_when_two_items_are_given_and_one_is_the_lowest_in_the_moment_priority_the_other_one_is_returned()
      {
         let first_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "1")))
+            .id(Some(("surreal_item", "1").into()))
             .summary("First item")
             .build()
             .unwrap();
         let second_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "2")))
+            .id(Some(("surreal_item", "2").into()))
             .summary("Second item")
             .build()
             .unwrap();
 
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
-            .id(Some(RecordId::new("surreal_in_the_moment_priority", "1")))
+            .id(Some(("surreal_in_the_moment_priority", "1").into()))
             .kind(SurrealPriorityKind::LowestPriority)
             .choice(SurrealAction::MakeProgress(
                 first_item.id.clone().expect("hard coded to a value"),
@@ -612,24 +611,24 @@ mod tests {
     fn apply_in_the_moment_priorities_when_three_items_are_given_and_one_is_the_highest_in_the_moment_priority_over_one_other_item_then_the_other_two_are_returned_to_pick_between()
      {
         let first_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "1")))
+            .id(Some(("surreal_item", "1").into()))
             .summary("First item")
             .build()
             .unwrap();
         let second_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "2")))
+            .id(Some(("surreal_item", "2").into()))
             .summary("Second item")
             .build()
             .unwrap();
         let third_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "3")))
+            .id(Some(("surreal_item", "3").into()))
             .summary("Third item")
             .build()
             .unwrap();
 
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
-            .id(Some(RecordId::new("surreal_in_the_moment_priority", "1")))
+            .id(Some(("surreal_in_the_moment_priority", "1").into()))
             .kind(SurrealPriorityKind::HighestPriority)
             .choice(SurrealAction::MakeProgress(
                 first_item.id.clone().expect("hard coded to a value"),
@@ -717,24 +716,24 @@ mod tests {
     fn apply_in_the_moment_priorities_when_three_items_are_given_and_one_is_the_lowest_in_the_moment_priority_over_one_other_item_then_the_other_two_are_returned_to_pick_between()
      {
         let first_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "1")))
+            .id(Some(("surreal_item", "1").into()))
             .summary("First item")
             .build()
             .unwrap();
         let second_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "2")))
+            .id(Some(("surreal_item", "2").into()))
             .summary("Second item")
             .build()
             .unwrap();
         let third_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "3")))
+            .id(Some(("surreal_item", "3").into()))
             .summary("Third item")
             .build()
             .unwrap();
 
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
-            .id(Some(RecordId::new("surreal_in_the_moment_priority", "1")))
+            .id(Some(("surreal_in_the_moment_priority", "1").into()))
             .kind(SurrealPriorityKind::LowestPriority)
             .choice(SurrealAction::MakeProgress(
                 first_item.id.clone().expect("hard coded to a value"),
@@ -824,24 +823,24 @@ mod tests {
     fn apply_in_the_moment_priorities_when_three_items_are_given_and_one_is_the_highest_priority_over_one_other_and_the_third_is_the_lowest_priority_over_the_one_other_then_the_highest_priority_is_returned()
      {
         let first_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "1")))
+            .id(Some(("surreal_item", "1").into()))
             .summary("First item")
             .build()
             .unwrap();
         let second_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "2")))
+            .id(Some(("surreal_item", "2").into()))
             .summary("Second item")
             .build()
             .unwrap();
         let third_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "3")))
+            .id(Some(("surreal_item", "3").into()))
             .summary("Third item")
             .build()
             .unwrap();
 
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let highest_in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
-            .id(Some(RecordId::new("surreal_in_the_moment_priority", "1")))
+            .id(Some(("surreal_in_the_moment_priority", "1").into()))
             .kind(SurrealPriorityKind::HighestPriority)
             .choice(SurrealAction::MakeProgress(
                 first_item.id.clone().expect("hard coded to a value"),
@@ -853,7 +852,7 @@ mod tests {
             .build()
             .unwrap();
         let lowest_in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
-            .id(Some(RecordId::new("surreal_in_the_moment_priority", "3")))
+            .id(Some(("surreal_in_the_moment_priority", "3").into()))
             .kind(SurrealPriorityKind::LowestPriority)
             .choice(SurrealAction::MakeProgress(
                 third_item.id.clone().expect("hard coded to a value"),
@@ -932,30 +931,30 @@ mod tests {
     fn apply_in_the_moment_priorities_when_the_priority_is_out_of_mode_and_lowest_priority_the_priority_should_not_apply()
      {
         let first_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "1")))
+            .id(Some(("surreal_item", "1").into()))
             .summary("First item")
             .build()
             .unwrap();
         let second_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "2")))
+            .id(Some(("surreal_item", "2").into()))
             .summary("Second item")
             .build()
             .unwrap();
         let third_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "3")))
+            .id(Some(("surreal_item", "3").into()))
             .summary("Third item")
             .build()
             .unwrap();
 
         let core_motivation = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "core")))
+            .id(Some(("surreal_item", "core").into()))
             .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
             .smaller_items_in_priority_order(vec![
                 SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "1"),
+                    surreal_item_id: ("surreal_item", "1").into(),
                 },
                 SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "2"),
+                    surreal_item_id: ("surreal_item", "2").into(),
                 },
             ])
             .summary("Core motivation")
@@ -963,12 +962,12 @@ mod tests {
             .unwrap();
 
         let non_core_motivation = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "noncore")))
+            .id(Some(("surreal_item", "noncore").into()))
             .item_type(SurrealItemType::Motivation(
                 SurrealMotivationKind::NonCoreWork,
             ))
             .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                surreal_item_id: RecordId::new("surreal_item", "3"),
+                surreal_item_id: ("surreal_item", "3").into(),
             }])
             .summary("Core motivation")
             .build()
@@ -976,7 +975,7 @@ mod tests {
 
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let lowest_in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
-            .id(Some(RecordId::new("surreal_in_the_moment_priority", "1")))
+            .id(Some(("surreal_in_the_moment_priority", "1").into()))
             .kind(SurrealPriorityKind::LowestPriority)
             .choice(SurrealAction::MakeProgress(
                 third_item.id.clone().expect("hard coded to a value"),
@@ -1049,30 +1048,30 @@ mod tests {
     fn apply_in_the_moment_priorities_when_the_priority_is_out_of_mode_and_highest_priority_the_priority_should_not_apply()
      {
         let first_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "1")))
+            .id(Some(("surreal_item", "1").into()))
             .summary("First item")
             .build()
             .unwrap();
         let second_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "2")))
+            .id(Some(("surreal_item", "2").into()))
             .summary("Second item")
             .build()
             .unwrap();
         let third_item = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "3")))
+            .id(Some(("surreal_item", "3").into()))
             .summary("Third item")
             .build()
             .unwrap();
 
         let core_motivation = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "core")))
+            .id(Some(("surreal_item", "core").into()))
             .item_type(SurrealItemType::Motivation(SurrealMotivationKind::CoreWork))
             .smaller_items_in_priority_order(vec![
                 SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "1"),
+                    surreal_item_id: ("surreal_item", "1").into(),
                 },
                 SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "2"),
+                    surreal_item_id: ("surreal_item", "2").into(),
                 },
             ])
             .summary("Core motivation")
@@ -1080,12 +1079,12 @@ mod tests {
             .unwrap();
 
         let non_core_motivation = SurrealItemBuilder::default()
-            .id(Some(RecordId::new("surreal_item", "noncore")))
+            .id(Some(("surreal_item", "noncore").into()))
             .item_type(SurrealItemType::Motivation(
                 SurrealMotivationKind::NonCoreWork,
             ))
             .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                surreal_item_id: RecordId::new("surreal_item", "3"),
+                surreal_item_id: ("surreal_item", "3").into(),
             }])
             .summary("Core motivation")
             .build()
@@ -1093,7 +1092,7 @@ mod tests {
 
         let in_an_hour = Utc::now() + chrono::Duration::hours(1);
         let highest_in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
-            .id(Some(RecordId::new("surreal_in_the_moment_priority", "1")))
+            .id(Some(("surreal_in_the_moment_priority", "1").into()))
             .kind(SurrealPriorityKind::HighestPriority)
             .choice(SurrealAction::MakeProgress(
                 third_item.id.clone().expect("hard coded to a value"),

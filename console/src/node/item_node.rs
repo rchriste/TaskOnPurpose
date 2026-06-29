@@ -2,7 +2,7 @@ use std::{iter, time::Duration};
 
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
-use surrealdb::types::{Datetime, RecordId};
+use surrealdb::{RecordId, sql::Datetime};
 
 use crate::{
     base_data::{Visited, event::Event, item::Item, time_spent::TimeSpent},
@@ -848,7 +848,6 @@ fn calculate_urgent_action_items<'a>(
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use surrealdb::types::RecordId;
 
     use crate::{
         base_data::item::ItemVecExtensions,
@@ -867,29 +866,29 @@ mod tests {
      {
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "1")))
+                .id(Some(("surreal_item", "1").into()))
                 .summary("Main Item that covers something else")
                 .item_type(SurrealItemType::Action)
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "3"),
+                    surreal_item_id: ("surreal_item", "3").into(),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "2")))
+                .id(Some(("surreal_item", "2").into()))
                 .summary("Item that is covered by main item and the item this covers")
                 .item_type(SurrealItemType::Action)
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "1"),
+                    surreal_item_id: ("surreal_item", "1").into(),
                 }])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "3")))
+                .id(Some(("surreal_item", "3").into()))
                 .summary("Item that is covers the item it is covered by, circular reference")
                 .item_type(SurrealItemType::Action)
                 .smaller_items_in_priority_order(vec![SurrealOrderedSubItem::SubItem {
-                    surreal_item_id: RecordId::new("surreal_item", "2"),
+                    surreal_item_id: ("surreal_item", "2").into(),
                 }])
                 .build()
                 .unwrap(),
@@ -929,33 +928,30 @@ mod tests {
      {
         let surreal_items = vec![
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "1")))
+                .id(Some(("surreal_item", "1").into()))
                 .summary("Main Item that covers something else")
                 .item_type(SurrealItemType::Action)
-                .dependencies(vec![SurrealDependency::AfterItem(RecordId::new(
-                    "surreal_item",
-                    "1",
-                ))])
+                .dependencies(vec![SurrealDependency::AfterItem(
+                    ("surreal_item", "1").into(),
+                )])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "2")))
+                .id(Some(("surreal_item", "2").into()))
                 .summary("Item that is covered by main item and the item this covers")
                 .item_type(SurrealItemType::Action)
-                .dependencies(vec![SurrealDependency::AfterItem(RecordId::new(
-                    "surreal_item",
-                    "2",
-                ))])
+                .dependencies(vec![SurrealDependency::AfterItem(
+                    ("surreal_item", "2").into(),
+                )])
                 .build()
                 .unwrap(),
             SurrealItemBuilder::default()
-                .id(Some(RecordId::new("surreal_item", "3")))
+                .id(Some(("surreal_item", "3").into()))
                 .summary("Item that is covers the item it is covered by, circular reference")
                 .item_type(SurrealItemType::Action)
-                .dependencies(vec![SurrealDependency::AfterItem(RecordId::new(
-                    "surreal_item",
-                    "3",
-                ))])
+                .dependencies(vec![SurrealDependency::AfterItem(
+                    ("surreal_item", "3").into(),
+                )])
                 .build()
                 .unwrap(),
         ];

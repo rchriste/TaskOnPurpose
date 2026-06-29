@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use surrealdb::types::{Datetime, RecordId, SurrealValue};
+use surrealdb::{RecordId, sql::Datetime};
 
 use crate::new_event::NewEvent;
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, surrealdb::types::SurrealValue)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct SurrealEvent {
     pub(crate) id: Option<RecordId>,
     pub(crate) version: u32,

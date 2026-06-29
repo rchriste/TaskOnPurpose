@@ -8,7 +8,7 @@ use ahash::HashMap;
 use chrono::{DateTime, Local, Utc};
 use configure_settings::configure_settings;
 use inquire::{InquireError, Select, Text};
-use surrealdb::types::RecordId;
+use surrealdb::RecordId;
 use tokio::sync::mpsc::Sender;
 
 use crate::{
