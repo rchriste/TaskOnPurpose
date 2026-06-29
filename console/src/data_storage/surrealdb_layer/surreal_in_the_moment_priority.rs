@@ -12,7 +12,6 @@ pub(crate) struct SurrealInTheMomentPriority {
     pub(crate) id: Option<RecordId>,
     pub(crate) choice: SurrealAction,
     pub(crate) kind: SurrealPriorityKind,
-    pub(crate) not_chosen: Vec<SurrealAction>,
     pub(crate) in_effect_until: Vec<SurrealTrigger>,
 
     #[cfg_attr(test, builder(default))]
@@ -53,8 +52,12 @@ impl SurrealAction {
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug)]
 pub(crate) enum SurrealPriorityKind {
-    HighestPriority,
-    LowestPriority,
+    /// `choice` is higher priority than `not_chosen` while active.
+    HighestPriority { not_chosen: Vec<SurrealAction> },
+    /// `choice` is lower priority than `not_chosen` while active.
+    LowestPriority { not_chosen: Vec<SurrealAction> },
+    /// `choice` is excluded from the mode while active.
+    NotInMode,
 }
 
 impl SurrealInTheMomentPriority {

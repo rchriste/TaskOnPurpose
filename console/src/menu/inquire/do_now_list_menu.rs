@@ -16,7 +16,7 @@ use change_mode::present_change_mode_menu;
 use chrono::{DateTime, Local, NaiveTime, Utc};
 use classify_item::present_item_needs_a_classification_menu;
 use do_now_list_single_item::urgency_plan::present_set_ready_and_urgency_plan_menu;
-use inquire::{InquireError, Select};
+use inquire::{InquireError, MultiSelect, Select};
 use itertools::chain;
 use parent_back_to_a_motivation::present_parent_back_to_a_motivation_menu;
 use pick_item_review_frequency::present_pick_item_review_frequency_menu;
@@ -29,7 +29,8 @@ use crate::{
     base_data::{BaseData, time_spent::TimeSpent},
     calculated_data::CalculatedData,
     data_storage::surrealdb_layer::{
-        data_layer_commands::DataLayerCommands, surreal_item::SurrealDependency,
+        data_layer_commands::DataLayerCommands,
+        surreal_in_the_moment_priority::SurrealPriorityKind, surreal_item::SurrealDependency,
         surreal_tables::SurrealTables,
     },
     display::{
@@ -37,6 +38,7 @@ use crate::{
         display_item_node::DisplayFormat, display_item_status::DisplayItemStatus,
         display_scheduled_item::DisplayScheduledItem,
         display_urgency_level_item_with_item_status::DisplayUrgencyLevelItemWithItemStatus,
+        display_why_in_scope_and_action_with_item_status::DisplayWhyInScopeAndActionWithItemStatus,
     },
     menu::inquire::back_menu::present_back_menu,
     node::{
@@ -52,6 +54,7 @@ use crate::{
 
 use self::do_now_list_single_item::{
     present_do_now_list_item_selected, present_is_person_or_group_around_menu,
+    urgency_plan::prompt_for_triggers,
 };
 
 use super::back_menu::capture;
@@ -60,6 +63,7 @@ pub(crate) enum InquireDoNowListItem<'e> {
     CaptureNewItem,
     Search,
     ChangeMode(&'e CurrentMode),
+    ExcludeFromThisMode,
     DeclareEvent { waiting_on: Vec<&'e EventNode<'e>> },
     DoNowListSingleItem(&'e UrgencyLevelItemWithItemStatus<'e>),
     RefreshList(DateTime<Local>),
@@ -72,6 +76,7 @@ impl Display for InquireDoNowListItem<'_> {
         match self {
             Self::CaptureNewItem => write!(f, "🗬   Capture New Item"),
             Self::Search => write!(f, "🔍  Search"),
+            Self::ExcludeFromThisMode => write!(f, "🚫  Exclude Items From This Mode"),
             Self::DoNowListSingleItem(item) => {
                 let display = DisplayUrgencyLevelItemWithItemStatus::new(
                     item,
@@ -83,8 +88,8 @@ impl Display for InquireDoNowListItem<'_> {
             Self::ChangeMode(current_mode) => {
                 write!(
                     f,
-                    "🧭  Change Mode - Currently: {}",
-                    current_mode.get_name()
+                    "🧭  Change Mode - Currently: {} {:?}",
+                    current_mode.get_name(), current_mode.get_mode_id()
                 )
             }
             Self::RefreshList(bullet_list_created) => write!(
@@ -140,6 +145,7 @@ impl<'a> InquireDoNowListItem<'a> {
             item_action
                 .iter()
                 .map(InquireDoNowListItem::DoNowListSingleItem),
+            once(InquireDoNowListItem::ExcludeFromThisMode),
             once(InquireDoNowListItem::BackMenu),
             once(InquireDoNowListItem::Help),
         )
@@ -414,6 +420,9 @@ pub(crate) async fn present_do_now_list_menu(
         Ok(InquireDoNowListItem::Search) => {
             present_search_menu(&do_now_list, send_to_data_storage_layer).await
         }
+        Ok(InquireDoNowListItem::ExcludeFromThisMode) => {
+            present_exclude_from_this_mode_menu(&do_now_list, send_to_data_storage_layer).await
+        }
         Ok(InquireDoNowListItem::ChangeMode(current_mode)) => {
             present_change_mode_menu(current_mode, send_to_data_storage_layer).await
         }
@@ -608,6 +617,96 @@ pub(crate) async fn present_do_now_list_menu(
         Ok(InquireDoNowListItem::BackMenu) => {
             Box::pin(present_back_menu(send_to_data_storage_layer)).await
         }
+        Err(InquireError::OperationInterrupted) => Err(()),
+        Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+    }
+}
+
+fn collect_all_currently_shown_do_now_items<'e>(
+    do_now_list: &'e DoNowList,
+) -> Vec<DisplayWhyInScopeAndActionWithItemStatus<'e>> {
+    let mut seen_record_ids = HashSet::default();
+    let mut all_items = Vec::default();
+
+    for urgency_bucket in do_now_list.get_ordered_do_now_list() {
+        match urgency_bucket {
+            UrgencyLevelItemWithItemStatus::SingleItem(item) => {
+                if seen_record_ids.insert(item.get_surreal_record_id().clone()) {
+                    all_items.push(DisplayWhyInScopeAndActionWithItemStatus::new(
+                        item,
+                        Filter::Active,
+                        DisplayFormat::SingleLine,
+                    ));
+                }
+            }
+            UrgencyLevelItemWithItemStatus::MultipleItems(items) => {
+                for item in items {
+                    if seen_record_ids.insert(item.get_surreal_record_id().clone()) {
+                        all_items.push(DisplayWhyInScopeAndActionWithItemStatus::new(
+                            item,
+                            Filter::Active,
+                            DisplayFormat::SingleLine,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    all_items
+}
+
+async fn present_exclude_from_this_mode_menu(
+    do_now_list: &DoNowList,
+    send_to_data_storage_layer: &Sender<DataLayerCommands>,
+) -> Result<(), ()> {
+    let Some(current_mode_id) = do_now_list.get_current_mode().get_mode_id().cloned() else {
+        println!("No mode is selected. Select a mode first, then choose exclusions.");
+        return Ok(());
+    };
+
+    let choices = collect_all_currently_shown_do_now_items(do_now_list);
+    let selected = MultiSelect::new(
+        &format!(
+            "Select items to exclude from mode \"{}\" (Space: toggle, Enter: done)|",
+            do_now_list.get_current_mode().get_name()
+        ),
+        choices,
+    )
+    .with_page_size(default_select_page_size())
+    .prompt();
+
+    match selected {
+        Ok(selected) => {
+            let selected_actions = selected
+                .iter()
+                .map(|item| item.clone_to_surreal_action())
+                .collect::<Vec<_>>();
+
+            if selected_actions.is_empty() {
+                return Ok(());
+            }
+
+            println!("How long should these exclusions be in effect?");
+            let now = Utc::now();
+            let in_effect_until = prompt_for_triggers(None, &now, send_to_data_storage_layer).await;
+
+            println!("Current mode id:{:?}", Some(current_mode_id.clone()));
+            for action in selected_actions {
+                send_to_data_storage_layer
+                    .send(DataLayerCommands::DeclareInTheMomentPriority {
+                        choice: action,
+                        kind: SurrealPriorityKind::NotInMode,
+                        for_mode: Some(current_mode_id.clone()),
+                        in_effect_until: in_effect_until.clone(),
+                    })
+                    .await
+                    .unwrap();
+            }
+
+            Ok(())
+        }
+        Err(InquireError::OperationCanceled) => Ok(()),
         Err(InquireError::OperationInterrupted) => Err(()),
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
     }

@@ -9,10 +9,12 @@ use chrono::{DateTime, Utc};
 use ouroboros::self_referencing;
 use surrealdb::RecordId;
 
-use crate::data_storage::surrealdb_layer::{
-    surreal_current_mode::SurrealCurrentMode,
-    surreal_in_the_moment_priority::SurrealInTheMomentPriority, surreal_tables::SurrealTables,
-    surreal_working_on::SurrealWorkingOn,
+use crate::{
+    base_data::in_the_moment_priority::InTheMomentPriority,
+    data_storage::surrealdb_layer::{
+        surreal_current_mode::SurrealCurrentMode, surreal_tables::SurrealTables,
+        surreal_working_on::SurrealWorkingOn,
+    },
 };
 
 use self::{
@@ -45,6 +47,10 @@ pub(crate) struct BaseData {
 
     #[borrows(surreal_tables)]
     #[covariant]
+    in_the_moment_priorities: Vec<InTheMomentPriority<'this>>,
+
+    #[borrows(surreal_tables)]
+    #[covariant]
     modes: Vec<Mode<'this>>,
 }
 
@@ -60,6 +66,13 @@ impl BaseData {
             events_builder: |surreal_tables| surreal_tables.make_events(),
             now,
             time_spent_log_builder: |surreal_tables| surreal_tables.make_time_spent_log().collect(),
+            in_the_moment_priorities_builder: |surreal_tables| {
+                surreal_tables
+                    .get_surreal_in_the_moment_priorities()
+                    .iter()
+                    .map(InTheMomentPriority::new)
+                    .collect()
+            },
             modes_builder: |surreal_tables| surreal_tables.make_modes().collect(),
         }
         .build()
@@ -85,9 +98,8 @@ impl BaseData {
         self.borrow_time_spent_log()
     }
 
-    pub(crate) fn get_surreal_in_the_moment_priorities(&self) -> &[SurrealInTheMomentPriority] {
-        self.borrow_surreal_tables()
-            .get_surreal_in_the_moment_priorities()
+    pub(crate) fn get_in_the_moment_priorities(&self) -> &[InTheMomentPriority<'_>] {
+        self.borrow_in_the_moment_priorities()
     }
 
     pub(crate) fn get_surreal_current_modes(&self) -> &[SurrealCurrentMode] {

@@ -107,7 +107,6 @@ pub(crate) enum DataLayerCommands {
         choice: SurrealAction,
         kind: SurrealPriorityKind,
         for_mode: Option<RecordId>,
-        not_chosen: Vec<SurrealAction>,
         in_effect_until: Vec<SurrealTrigger>,
     },
     ClearInTheMomentPriority(RecordId),
@@ -438,12 +437,10 @@ pub(crate) async fn data_storage_start_and_run(
                 choice,
                 kind,
                 for_mode,
-                not_chosen,
                 in_effect_until,
             }) => {
                 let mut priority = SurrealInTheMomentPriority {
                     id: None,
-                    not_chosen,
                     in_effect_until,
                     for_mode,
                     created: Utc::now().into(),
@@ -593,6 +590,10 @@ fn is_surrealdb_error_retryable(err: &SurrealError) -> bool {
         }
         _ => false,
     }
+}
+
+fn is_missing_table_error(err: &SurrealError) -> bool {
+    matches!(err, SurrealError::Db(CoreError::TbNotFound { .. }))
 }
 
 async fn connect_with_auto_upgrade(endpoint: &str) -> Result<Surreal<Any>, String> {
@@ -996,6 +997,19 @@ async fn clear_surreal_tables(db: &Surreal<Any>, tables: SurrealTables) -> Resul
     Ok(())
 }
 
+async fn clear_surreal_in_the_moment_priorities_table(db: &Surreal<Any>) -> Result<(), String> {
+    db.query(format!("DELETE {}", SurrealInTheMomentPriority::TABLE_NAME))
+        .await
+        .map_err(|e| {
+            format!(
+                "Failed to clear {} table: {e:?}",
+                SurrealInTheMomentPriority::TABLE_NAME
+            )
+        })?;
+
+    Ok(())
+}
+
 pub(crate) async fn copy_database_if_destination_empty(
     source: SurrealDbConnectionConfig,
     destination: SurrealDbConnectionConfig,
@@ -1202,7 +1216,27 @@ pub(crate) async fn load_from_surrealdb_upgrade_if_needed(db: &Surreal<Any>) -> 
         }
     };
 
-    let surreal_in_the_moment_priorities = surreal_in_the_moment_priorities.await.unwrap();
+    let surreal_in_the_moment_priorities = match surreal_in_the_moment_priorities.await {
+        Ok(values) => values,
+        Err(err) if is_missing_table_error(&err) => Vec::new(),
+        Err(err) => {
+            println!(
+                "Clearing In The Moment Priorities, they are from an earlier version of Task On Purpose: {}",
+                err
+            );
+            clear_surreal_in_the_moment_priorities_table(db)
+                .await
+                .unwrap_or_else(|clear_err| panic!("{}", clear_err));
+            println!("Done");
+            Vec::new()
+        }
+    };
+
+    let surreal_current_modes = match surreal_current_modes.await {
+        Ok(values) => values,
+        Err(err) if is_missing_table_error(&err) => Vec::new(),
+        Err(err) => panic!("Unable to load current modes: {}", err),
+    };
 
     let surreal_modes = surreal_modes.await.unwrap();
 
@@ -1210,7 +1244,7 @@ pub(crate) async fn load_from_surrealdb_upgrade_if_needed(db: &Surreal<Any>) -> 
         surreal_items: all_items,
         surreal_time_spent_log: time_spent_log,
         surreal_in_the_moment_priorities,
-        surreal_current_modes: surreal_current_modes.await.unwrap(),
+        surreal_current_modes,
         surreal_modes,
         surreal_events: surreal_events.await.unwrap(),
         surreal_working_on: surreal_working_on.await.unwrap(),
@@ -2535,5 +2569,29 @@ mod tests {
         .expect_err("Destination is not empty so copy should refuse");
 
         assert!(err.contains("Destination database is not empty"));
+    }
+
+    #[tokio::test]
+    async fn load_from_surrealdb_clears_legacy_in_the_moment_priorities() {
+        let db = connect("mem://").await.unwrap();
+        db.use_ns("TaskOnPurpose")
+            .use_db("legacy_priorities")
+            .await
+            .unwrap();
+
+        db.query(
+            "CREATE in_the_moment_priorities:legacy CONTENT {
+                choice: 'legacy-choice',
+                kind: 'legacy-kind'
+            };",
+        )
+        .await
+        .unwrap();
+
+        let tables = load_from_surrealdb_upgrade_if_needed(&db).await;
+        assert!(tables.surreal_in_the_moment_priorities.is_empty());
+
+        let tables = load_from_surrealdb_upgrade_if_needed(&db).await;
+        assert!(tables.surreal_in_the_moment_priorities.is_empty());
     }
 }
