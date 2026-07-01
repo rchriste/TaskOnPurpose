@@ -5,3 +5,7 @@
 
 [build]
 rustflags = ["-C", "target-cpu=native"]
+
+#Workaround for Canopy
+[http]
+check-revoke=false
