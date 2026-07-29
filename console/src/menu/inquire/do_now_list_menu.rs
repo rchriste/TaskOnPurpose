@@ -89,7 +89,8 @@ impl Display for InquireDoNowListItem<'_> {
                 write!(
                     f,
                     "🧭  Change Mode - Currently: {} {:?}",
-                    current_mode.get_name(), current_mode.get_mode_id()
+                    current_mode.get_name(),
+                    current_mode.get_mode_id()
                 )
             }
             Self::RefreshList(bullet_list_created) => write!(

@@ -123,7 +123,7 @@ fn find_a_valid_order<'s>(
         let (mut start, duration): (DateTime<Utc>, Duration) = match to_schedule {
             SurrealScheduled::Exact {
                 start, duration, ..
-            } => (start.clone().into(), duration.clone().into()),
+            } => (start.clone().into(), (*duration).into()),
             SurrealScheduled::Range {
                 start_range,
                 duration,

@@ -125,7 +125,7 @@ impl<'s> InTheMomentPriorityWithItemAction<'s> {
             }
             SurrealPriorityKind::NotInMode => PriorityKind::new_not_in_mode(),
         };
-        let created = in_the_moment_priority.get_created().clone();
+        let created = *in_the_moment_priority.get_created();
 
         InTheMomentPriorityWithItemAction {
             in_the_moment_priority,
