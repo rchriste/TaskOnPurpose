@@ -10,7 +10,7 @@ pub(crate) struct ParentLookup<'s> {
 impl<'s> ParentLookup<'s> {
     pub(crate) fn new(all_items: &'s HashMap<&'s RecordId, Item<'s>>) -> Self {
         let mut parent_lookup = HashMap::new();
-        for (_, parent_item) in all_items.iter() {
+        for parent_item in all_items.values() {
             for child in parent_item.get_children() {
                 parent_lookup
                     .entry(child)
