@@ -135,8 +135,18 @@ pub(crate) async fn priority_wizard_loop<'a>(
             .filter(|item| !selected_items.contains(item.get_surreal_record_id()))
             .collect();
 
-        if unselected_items.len() <= 1 {
-            // All items have been selected - break to final choice
+        if unselected_items.len() == 1 {
+            super::handle_item_selection(
+                unselected_items.first().expect("len() == 1"),
+                do_now_list,
+                send_to_data_storage_layer,
+            )
+            .await?;
+
+            // After returning from the menu, return Ok to refresh the main loop
+            return Ok(());
+        } else if unselected_items.is_empty() {
+            // All items have been selected - break to work out what to do
             break Ok(());
         }
 
@@ -380,6 +390,20 @@ pub(crate) async fn priority_wizard_loop<'a>(
                     .map(|item| item.clone_to_surreal_action())
                     .collect();
 
+                // Eliminate the currently selected item (not the items picked above).
+                selected_items.insert(selected_at_random.get_surreal_record_id().clone());
+                // Now eliminate all items not selected so the user is selecting an item from the list of what they said was lower priority
+                for previously_unselected in &unselected_items {
+                    if lower_priority_choices
+                        .contains(&previously_unselected.clone_to_surreal_action())
+                    {
+                        //Do nothing because these are the items we want to select from the next round. Items that this past item was a lower priority than
+                    } else {
+                        selected_items
+                            .insert(previously_unselected.get_surreal_record_id().clone());
+                    }
+                }
+
                 send_to_data_storage_layer
                     .send(DataLayerCommands::DeclareInTheMomentPriority {
                         choice: selected_at_random.clone_to_surreal_action(),
@@ -391,9 +415,6 @@ pub(crate) async fn priority_wizard_loop<'a>(
                     })
                     .await
                     .unwrap();
-
-                // Only eliminate the currently selected item (not the items picked above).
-                selected_items.insert(selected_at_random.get_surreal_record_id().clone());
             } else {
                 // User didn't select any higher-or-lower comparisons - ask what they want to do
                 let no_selection_choice = Select::new(
