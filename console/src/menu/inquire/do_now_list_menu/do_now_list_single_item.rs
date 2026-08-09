@@ -633,6 +633,7 @@ async fn parent_to_item(
     let time_spent_log = base_data.get_time_spent_log();
     let item_nodes = active_items
         .iter()
+        .filter(|e| e.get_surreal_record_id() != parent_this.get_surreal_record_id())
         .map(|x| ItemNode::new(x, items, &parent_lookup, events, time_spent_log))
         .collect::<Vec<_>>();
     let list = ParentToItem::make_list(&item_nodes);
