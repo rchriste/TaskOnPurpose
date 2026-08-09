@@ -4,7 +4,7 @@ mod something_else_should_be_done_first;
 pub(crate) mod state_a_smaller_action;
 pub(crate) mod urgency_plan;
 
-use std::fmt::Display;
+use std::{fmt::Display, iter::chain};
 
 use ahash::{HashMap, HashSet};
 use better_term::{Color, Style};
@@ -635,13 +635,13 @@ async fn parent_to_item(
         .iter()
         .map(|x| ItemNode::new(x, items, &parent_lookup, events, time_spent_log))
         .collect::<Vec<_>>();
-    let list = DisplayItemNode::make_list(&item_nodes, Filter::Active, DisplayFormat::SingleLine);
+    let list = ParentToItem::make_list(&item_nodes);
 
     let selection = Select::new("Type to Search or Press Esc to enter a new one", list)
         .with_page_size(default_select_page_size())
         .prompt();
     match selection {
-        Ok(display_item) => {
+        Ok(ParentToItem::ExistingParent(display_item)) => {
             let item_node: &ItemNode = display_item.get_item_node();
             let higher_importance_than_this = if item_node.has_children(Filter::Active) {
                 let items = item_node
@@ -662,12 +662,42 @@ async fn parent_to_item(
                 .unwrap();
             Ok(())
         }
-        Err(InquireError::InvalidConfiguration(_)) => {
+        Ok(ParentToItem::CreateNewParent) | Err(InquireError::InvalidConfiguration(_)) => {
             parent_to_new_item(parent_this, send_to_data_storage_layer).await
         }
         Err(InquireError::OperationCanceled) => Ok(()),
         Err(InquireError::OperationInterrupted) => Err(()),
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+    }
+}
+
+enum ParentToItem<'e> {
+    CreateNewParent,
+    ExistingParent(DisplayItemNode<'e>),
+}
+
+impl Display for ParentToItem<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParentToItem::CreateNewParent => write!(f, "Create New Parent"),
+            ParentToItem::ExistingParent(display_item_node) => write!(f, "{}", display_item_node),
+        }
+    }
+}
+
+impl<'e> ParentToItem<'e> {
+    fn make_list(item_nodes: &'e [ItemNode<'e>]) -> Vec<ParentToItem<'e>> {
+        chain(
+            [ParentToItem::CreateNewParent],
+            item_nodes.iter().map(|x| {
+                ParentToItem::ExistingParent(DisplayItemNode::new(
+                    x,
+                    Filter::Active,
+                    DisplayFormat::SingleLine,
+                ))
+            }),
+        )
+        .collect()
     }
 }
 

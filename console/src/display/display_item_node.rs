@@ -175,17 +175,6 @@ impl<'s> DisplayItemNode<'s> {
         }
     }
 
-    pub(crate) fn make_list(
-        item_nodes: &'s [ItemNode<'s>],
-        filter: Filter,
-        display_format: DisplayFormat,
-    ) -> Vec<DisplayItemNode<'s>> {
-        item_nodes
-            .iter()
-            .map(|x| DisplayItemNode::new(x, filter, display_format))
-            .collect()
-    }
-
     pub(crate) fn get_item_node(&self) -> &'s ItemNode<'s> {
         self.item_node
     }
