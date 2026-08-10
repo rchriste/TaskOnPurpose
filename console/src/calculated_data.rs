@@ -7,7 +7,7 @@ use crate::{
     node::{
         event_node::EventNode, item_node::ItemNode, item_status::ItemStatus, mode_node::ModeNode,
     },
-    systems::do_now_list::current_mode::CurrentMode,
+    systems::do_now_list::{current_mode::CurrentMode, current_mode_node::CurrentModeNode},
 };
 use ahash::HashMap;
 use chrono::{DateTime, Utc};
@@ -47,6 +47,10 @@ pub(crate) struct CalculatedData {
     #[borrows(base_data)]
     #[covariant]
     mode_nodes: Vec<ModeNode<'this>>,
+
+    #[borrows(current_mode, mode_nodes)]
+    #[covariant]
+    current_mode_node: CurrentModeNode<'this>,
 }
 
 impl CalculatedData {
@@ -119,6 +123,9 @@ impl CalculatedData {
                 let all_modes = base_data.get_modes();
                 all_modes.iter().map(|x| ModeNode::new(x, all_modes)).collect()
             },
+            current_mode_node_builder: |current_mode, all_modes| {
+                CurrentModeNode::new(current_mode, all_modes)
+            },
         }
         .build()
     }
@@ -141,6 +148,10 @@ impl CalculatedData {
 
     pub(crate) fn get_current_mode(&self) -> &CurrentMode {
         self.borrow_current_mode()
+    }
+
+    pub(crate) fn get_current_mode_node<'a>(&'a self) -> &'a CurrentModeNode<'a> {
+        self.borrow_current_mode_node()
     }
 
     pub(crate) fn get_mode_nodes(&self) -> &[ModeNode<'_>] {

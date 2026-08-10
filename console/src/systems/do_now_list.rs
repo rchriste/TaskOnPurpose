@@ -5,6 +5,7 @@ use ouroboros::self_referencing;
 use surrealdb::RecordId;
 
 pub(crate) mod current_mode;
+pub(crate) mod current_mode_node;
 
 use crate::{
     base_data::{BaseData, time_spent::TimeSpent},
@@ -18,7 +19,7 @@ use crate::{
         urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
         why_in_scope_and_action_with_item_status::{WhyInScope, WhyInScopeAndActionWithItemStatus},
     },
-    systems::upcoming::Upcoming,
+    systems::{do_now_list::current_mode_node::CurrentModeNode, upcoming::Upcoming},
 };
 
 #[self_referencing]
@@ -171,6 +172,10 @@ impl DoNowList {
 
     pub(crate) fn get_current_mode(&self) -> &CurrentMode {
         self.borrow_calculated_data().get_current_mode()
+    }
+
+    pub(crate) fn get_current_mode_node<'a>(&'a self) -> &'a CurrentModeNode<'a> {
+        self.borrow_calculated_data().get_current_mode_node()
     }
 
     pub(crate) fn get_event_nodes(&self) -> &HashMap<&RecordId, EventNode<'_>> {

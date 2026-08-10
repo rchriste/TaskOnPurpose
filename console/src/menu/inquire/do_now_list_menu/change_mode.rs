@@ -14,7 +14,7 @@ use crate::{
         do_now_list_menu::{ShouldResumeCurrentlyWorkingOn, present_normal_do_now_list_menu},
     },
     node::mode_node::ModeNode,
-    systems::do_now_list::current_mode::CurrentMode,
+    systems::do_now_list::current_mode_node::CurrentModeNode,
 };
 
 enum ChangeModeOption<'e> {
@@ -39,7 +39,7 @@ impl std::fmt::Display for ChangeModeOption<'_> {
 }
 
 pub(crate) async fn present_change_mode_menu(
-    current_mode: &CurrentMode,
+    current_mode: &CurrentModeNode<'_>,
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     let surreal_tables = SurrealTables::new(send_to_data_storage_layer)

@@ -2,6 +2,7 @@ use surrealdb::RecordId;
 
 use crate::base_data::mode::Mode;
 
+#[derive(Debug)]
 pub(crate) struct ModeNode<'s> {
     mode: &'s Mode<'s>,
     parent: Option<Box<ModeNode<'s>>>,

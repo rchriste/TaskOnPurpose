@@ -9,7 +9,10 @@ pub(crate) mod search;
 
 use std::{fmt::Display, iter::once};
 
-use crate::menu::inquire::default_select_page_size;
+use crate::{
+    menu::inquire::default_select_page_size,
+    systems::do_now_list::current_mode_node::CurrentModeNode,
+};
 use ahash::{HashMap, HashSet};
 use better_term::Style;
 use change_mode::present_change_mode_menu;
@@ -36,7 +39,7 @@ use crate::{
     display::{
         display_duration::DisplayDuration, display_item::DisplayItem,
         display_item_node::DisplayFormat, display_item_status::DisplayItemStatus,
-        display_scheduled_item::DisplayScheduledItem,
+        display_mode_node::DisplayModeNode, display_scheduled_item::DisplayScheduledItem,
         display_urgency_level_item_with_item_status::DisplayUrgencyLevelItemWithItemStatus,
         display_why_in_scope_and_action_with_item_status::DisplayWhyInScopeAndActionWithItemStatus,
     },
@@ -49,7 +52,7 @@ use crate::{
         urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
         why_in_scope_and_action_with_item_status::{WhyInScope, WhyInScopeAndActionWithItemStatus},
     },
-    systems::do_now_list::{DoNowList, current_mode::CurrentMode},
+    systems::do_now_list::DoNowList,
 };
 
 use self::do_now_list_single_item::{
@@ -62,7 +65,7 @@ use super::back_menu::capture;
 pub(crate) enum InquireDoNowListItem<'e> {
     CaptureNewItem,
     Search,
-    ChangeMode(&'e CurrentMode),
+    ChangeMode(&'e CurrentModeNode<'e>),
     ExcludeFromThisMode,
     DeclareEvent { waiting_on: Vec<&'e EventNode<'e>> },
     DoNowListSingleItem(&'e UrgencyLevelItemWithItemStatus<'e>),
@@ -86,12 +89,13 @@ impl Display for InquireDoNowListItem<'_> {
                 write!(f, "{}", display)
             }
             Self::ChangeMode(current_mode) => {
-                write!(
-                    f,
-                    "🧭  Change Mode - Currently: {} {:?}",
-                    current_mode.get_name(),
-                    current_mode.get_mode_id()
-                )
+                write!(f, "🧭  Change Mode - Currently: ")?;
+                if let Some(mode_node) = current_mode.get_mode_node() {
+                    let d = DisplayModeNode::new(mode_node, DisplayFormat::SingleLine);
+                    write!(f, "{}", d,)
+                } else {
+                    write!(f, "(no mode selected)")
+                }
             }
             Self::RefreshList(bullet_list_created) => write!(
                 f,
@@ -122,7 +126,7 @@ impl<'a> InquireDoNowListItem<'a> {
         item_action: &'a [UrgencyLevelItemWithItemStatus<'a>],
         event_nodes: &'a HashMap<&'a RecordId, EventNode<'a>>,
         do_now_list_created: DateTime<Utc>,
-        current_mode: &'a CurrentMode,
+        current_mode: &'a CurrentModeNode<'a>,
     ) -> Vec<InquireDoNowListItem<'a>> {
         let waiting_on = event_nodes
             .values()
@@ -391,7 +395,7 @@ pub(crate) async fn present_do_now_list_menu(
         ordered_do_now_list,
         event_nodes,
         *do_now_list.get_now(),
-        do_now_list.get_current_mode(),
+        do_now_list.get_current_mode_node(),
     );
 
     println!();
@@ -803,7 +807,6 @@ mod tests {
         },
         menu::inquire::do_now_list_menu::{InquireDoNowListItem, sort_items_by_created},
         node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
-        systems::do_now_list::current_mode::CurrentMode,
     };
 
     #[test]
@@ -838,14 +841,14 @@ mod tests {
         let calculated_data = CalculatedData::new_from_base_data(base_data);
         let event_nodes = calculated_data.get_event_nodes();
         let do_now_list_created = now;
-        let current_mode = CurrentMode::default();
+        let current_mode_node = calculated_data.get_current_mode_node();
 
         let empty_actions: [UrgencyLevelItemWithItemStatus; 0] = [];
         let list = InquireDoNowListItem::create_list(
             &empty_actions,
             event_nodes,
             do_now_list_created,
-            &current_mode,
+            current_mode_node,
         );
 
         assert!(

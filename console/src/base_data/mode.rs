@@ -2,6 +2,7 @@ use surrealdb::RecordId;
 
 use crate::data_storage::surrealdb_layer::surreal_mode::SurrealMode;
 
+#[derive(Debug)]
 pub(crate) struct Mode<'s> {
     surreal_mode: &'s SurrealMode,
 }
