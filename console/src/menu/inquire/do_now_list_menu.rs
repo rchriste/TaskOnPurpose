@@ -234,18 +234,83 @@ pub(crate) fn compute_time_spent_in_window(
     logs: &[&TimeSpent<'_>],
 ) -> chrono::Duration {
     logs.iter()
-        .filter_map(|x| {
-            let entry_start = std::cmp::min(*x.get_started_at(), *x.get_stopped_at());
-            let entry_end = std::cmp::max(*x.get_started_at(), *x.get_stopped_at());
-            let overlap_start = std::cmp::max(entry_start, start);
-            let overlap_end = std::cmp::min(entry_end, end);
-            if overlap_end > overlap_start {
-                Some(overlap_end - overlap_start)
-            } else {
-                None
-            }
-        })
+        .map(|x| compute_time_spent_overlap_for_log(start, end, x))
         .fold(chrono::Duration::zero(), |acc, d| acc + d)
+}
+
+fn compute_time_spent_overlap_for_log(
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+    log: &TimeSpent<'_>,
+) -> chrono::Duration {
+    let entry_start = std::cmp::min(*log.get_started_at(), *log.get_stopped_at());
+    let entry_end = std::cmp::max(*log.get_started_at(), *log.get_stopped_at());
+    let overlap_start = std::cmp::max(entry_start, start);
+    let overlap_end = std::cmp::min(entry_end, end);
+
+    if overlap_end > overlap_start {
+        overlap_end - overlap_start
+    } else {
+        chrono::Duration::zero()
+    }
+}
+
+fn compute_time_spent_today_by_core_motivation(
+    do_now_list: &DoNowList,
+    start: DateTime<Utc>,
+    end: DateTime<Utc>,
+    logs: &[&TimeSpent<'_>],
+) -> Vec<(String, chrono::Duration)> {
+    let all_items_status = do_now_list.get_all_items_status();
+    let mut totals_by_core_motivation: HashMap<RecordId, (String, chrono::Duration)> =
+        HashMap::default();
+
+    for log in logs {
+        let overlap = compute_time_spent_overlap_for_log(start, end, log);
+        if overlap.is_zero() {
+            continue;
+        }
+
+        let mut counted_core_motivations_for_log: HashSet<RecordId> = HashSet::default();
+
+        for worked_towards in log.worked_towards() {
+            let Some(item_status) = all_items_status.get(worked_towards) else {
+                continue;
+            };
+
+            let Some(core_motivation) = item_status
+                .get_self_and_parents_flattened(Filter::All)
+                .into_iter()
+                .find(|item| item.is_type_motivation_kind_core())
+            else {
+                continue;
+            };
+
+            let core_motivation_id = core_motivation.get_surreal_record_id().clone();
+            if !counted_core_motivations_for_log.insert(core_motivation_id.clone()) {
+                continue;
+            }
+
+            let summary = core_motivation.get_summary().to_string();
+            let entry = totals_by_core_motivation
+                .entry(core_motivation_id)
+                .or_insert((summary, chrono::Duration::zero()));
+            entry.1 += overlap;
+        }
+    }
+
+    let mut totals = totals_by_core_motivation
+        .into_values()
+        .filter(|(_, duration)| !duration.is_zero())
+        .collect::<Vec<_>>();
+
+    totals.sort_by(|(summary_a, duration_a), (summary_b, duration_b)| {
+        duration_b
+            .cmp(duration_a)
+            .then_with(|| summary_a.cmp(summary_b))
+    });
+
+    totals
 }
 
 pub(crate) fn present_time_spent_today_summary(do_now_list: &DoNowList) {
@@ -265,6 +330,8 @@ pub(crate) fn present_time_spent_today_summary(do_now_list: &DoNowList) {
 
     let logs: Vec<&TimeSpent<'_>> = do_now_list.get_time_spent_log().iter().collect();
     let total_time = compute_time_spent_in_window(start_utc, end_utc, &logs);
+    let core_motivation_totals =
+        compute_time_spent_today_by_core_motivation(do_now_list, start_utc, end_utc, &logs);
 
     println!();
     println!(
@@ -277,6 +344,17 @@ pub(crate) fn present_time_spent_today_summary(do_now_list: &DoNowList) {
         ),
         Style::new(),
     );
+
+    if !core_motivation_totals.is_empty() {
+        println!("  Core motivations:");
+        for (summary, duration) in core_motivation_totals {
+            println!(
+                "    - {}: {}",
+                summary,
+                DisplayDuration::new(&duration.to_std().expect("duration is non-negative"))
+            );
+        }
+    }
 }
 
 pub(crate) async fn load_do_now_list_from_db(
