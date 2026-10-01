@@ -513,7 +513,7 @@ async fn authenticate_surrealdb(
     db: &Surreal<Any>,
     conn: &SurrealDbConnectionConfig,
     auth_cfg: &SurrealAuthConfig,
-) -> Result<(), SurrealError> {
+) -> Result<(), Box<SurrealError>> {
     let level = auth_cfg
         .level
         .as_deref()
