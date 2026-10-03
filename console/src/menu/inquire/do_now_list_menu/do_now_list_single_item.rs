@@ -1002,17 +1002,17 @@ impl IsAPersonOrGroupAroundSelection {
 
 #[derive(Clone)]
 enum ModeScopeSelection {
-    AllModes,
-    OnlyModes,
-    ExceptModes,
+    All,
+    Only,
+    Except,
 }
 
 impl Display for ModeScopeSelection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ModeScopeSelection::AllModes => write!(f, "All Modes"),
-            ModeScopeSelection::OnlyModes => write!(f, "Only These Modes"),
-            ModeScopeSelection::ExceptModes => write!(f, "All Except These Modes"),
+            ModeScopeSelection::All => write!(f, "All Modes"),
+            ModeScopeSelection::Only => write!(f, "Only These Modes"),
+            ModeScopeSelection::Except => write!(f, "All Except These Modes"),
         }
     }
 }
@@ -1043,9 +1043,9 @@ async fn present_set_mode_scope_menu(
     send_to_data_storage_layer: &Sender<DataLayerCommands>,
 ) -> Result<(), ()> {
     let scope_options = vec![
-        ModeScopeSelection::AllModes,
-        ModeScopeSelection::OnlyModes,
-        ModeScopeSelection::ExceptModes,
+        ModeScopeSelection::All,
+        ModeScopeSelection::Only,
+        ModeScopeSelection::Except,
     ];
 
     let starting_cursor = match item.get_mode_scope() {
@@ -1090,8 +1090,8 @@ async fn present_set_mode_scope_menu(
         .collect::<Vec<_>>();
 
     let mode_scope = match selected_scope {
-        ModeScopeSelection::AllModes => SurrealItemModeScope::AllModes,
-        ModeScopeSelection::OnlyModes | ModeScopeSelection::ExceptModes => {
+        ModeScopeSelection::All => SurrealItemModeScope::AllModes,
+        ModeScopeSelection::Only | ModeScopeSelection::Except => {
             if all_mode_options.is_empty() {
                 println!("No modes exist yet. Configure modes first, then set item mode scope.");
                 return Ok(());
@@ -1140,11 +1140,9 @@ async fn present_set_mode_scope_menu(
                 .collect::<Vec<_>>();
 
             match selected_scope {
-                ModeScopeSelection::OnlyModes => SurrealItemModeScope::OnlyModes(selected_mode_ids),
-                ModeScopeSelection::ExceptModes => {
-                    SurrealItemModeScope::ExceptModes(selected_mode_ids)
-                }
-                ModeScopeSelection::AllModes => unreachable!(),
+                ModeScopeSelection::Only => SurrealItemModeScope::OnlyModes(selected_mode_ids),
+                ModeScopeSelection::Except => SurrealItemModeScope::ExceptModes(selected_mode_ids),
+                ModeScopeSelection::All => unreachable!(),
             }
         }
     };
