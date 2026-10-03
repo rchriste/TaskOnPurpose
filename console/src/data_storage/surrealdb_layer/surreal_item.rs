@@ -167,6 +167,8 @@ pub(crate) enum SurrealHowMuchIsInMyControl {
     LargelyOutOfMyControl,
 }
 
+//It is not worth migrating the data to fix the warning so let's just suppress it
+#[allow(clippy::enum_variant_names)]
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
 pub(crate) enum SurrealItemModeScope {
     #[default]
