@@ -69,6 +69,10 @@ pub(crate) struct SurrealItem {
 
     #[cfg_attr(test, builder(default))]
     pub(crate) urgency_plan: Option<SurrealUrgencyPlan>,
+
+    #[serde(default)]
+    #[cfg_attr(test, builder(default))]
+    pub(crate) mode_scope: SurrealItemModeScope,
 }
 
 impl From<SurrealItem> for Option<RecordId> {
@@ -124,6 +128,7 @@ impl SurrealItem {
             last_reviewed,
             review_frequency: new_item.review_frequency,
             review_guidance: new_item.review_guidance,
+            mode_scope: SurrealItemModeScope::default(),
         })
     }
 
@@ -160,6 +165,14 @@ pub(crate) enum SurrealHowMuchIsInMyControl {
     MostlyInMyControl,
     PartiallyInMyControl,
     LargelyOutOfMyControl,
+}
+
+#[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
+pub(crate) enum SurrealItemModeScope {
+    #[default]
+    AllModes,
+    OnlyModes(Vec<RecordId>),
+    ExceptModes(Vec<RecordId>),
 }
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Clone, Debug, Default)]
@@ -551,6 +564,7 @@ impl From<SurrealItemOldVersion> for SurrealItem {
             review_guidance: value.review_guidance,
             last_reviewed,
             review_frequency,
+            mode_scope: SurrealItemModeScope::default(),
         }
     }
 }

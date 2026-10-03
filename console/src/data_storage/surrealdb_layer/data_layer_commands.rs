@@ -37,7 +37,8 @@ use super::{
     },
     surreal_item::{
         Responsibility, SurrealDependency, SurrealFrequency, SurrealItem, SurrealItemOldVersion,
-        SurrealItemType, SurrealOrderedSubItem, SurrealReviewGuidance, SurrealUrgencyPlan,
+        SurrealItemModeScope, SurrealItemType, SurrealOrderedSubItem, SurrealReviewGuidance,
+        SurrealUrgencyPlan,
     },
     surreal_mode,
     surreal_tables::SurrealTables,
@@ -99,6 +100,7 @@ pub(crate) enum DataLayerCommands {
     RemoveItemDependency(RecordId, SurrealDependency),
     AddItemDependencyNewEvent(RecordId, NewEvent),
     UpdateSummary(RecordId, String),
+    UpdateModeScope(RecordId, SurrealItemModeScope),
     UpdateModeName(RecordId, String),
     DeleteMode(RecordId),
     UpdateUrgencyPlan(RecordId, Option<SurrealUrgencyPlan>),
@@ -397,6 +399,9 @@ pub(crate) async fn data_storage_start_and_run(
             }
             Some(DataLayerCommands::UpdateSummary(item, new_summary)) => {
                 update_item_summary(item, new_summary, &db).await
+            }
+            Some(DataLayerCommands::UpdateModeScope(item, mode_scope)) => {
+                update_item_mode_scope(item, mode_scope, &db).await
             }
             Some(DataLayerCommands::UpdateModeName(thing, new_name)) => {
                 let updated: SurrealMode = db
@@ -1582,6 +1587,20 @@ async fn update_item_summary(item_to_update: RecordId, new_summary: String, db: 
     assert_eq!(updated.summary, new_summary);
 }
 
+async fn update_item_mode_scope(
+    item_to_update: RecordId,
+    mode_scope: SurrealItemModeScope,
+    db: &Surreal<Any>,
+) {
+    let updated: SurrealItem = db
+        .update(&item_to_update)
+        .patch(PatchOp::replace("/mode_scope", mode_scope.clone()))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.mode_scope, mode_scope);
+}
+
 async fn delete_mode(mode_id: RecordId, db: &Surreal<Any>) {
     let mode_to_delete: Option<SurrealMode> = db.select(mode_id.clone()).await.unwrap();
     let Some(mode_to_delete) = mode_to_delete else {
@@ -1654,7 +1673,9 @@ mod tests {
     use super::*;
 
     use crate::{
-        data_storage::surrealdb_layer::surreal_item::SurrealHowMuchIsInMyControl,
+        data_storage::surrealdb_layer::surreal_item::{
+            SurrealHowMuchIsInMyControl, SurrealItemModeScope,
+        },
         new_item::NewItemBuilder, new_mode::NewModeBuilder,
     };
 
@@ -1700,6 +1721,49 @@ mod tests {
         assert_eq!(
             SurrealItemType::Undeclared,
             surreal_tables.surreal_items.first().unwrap().item_type
+        );
+
+        drop(sender);
+        data_storage_join_handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn update_item_mode_scope_changes_persisted_mode_scope() {
+        let (sender, receiver) = mpsc::channel(1);
+        let data_storage_join_handle =
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
+
+        let new_item = NewItem::new("Mode scoped item".into(), Utc::now());
+        sender
+            .send(DataLayerCommands::NewItem(new_item))
+            .await
+            .unwrap();
+
+        let surreal_tables = SurrealTables::new(&sender).await.unwrap();
+        let item_id = surreal_tables
+            .surreal_items
+            .first()
+            .and_then(|item| item.id.clone())
+            .expect("Item should exist");
+
+        let updated_mode_scope = SurrealItemModeScope::OnlyModes(vec![
+            ("modes", "work").into(),
+            ("modes", "home").into(),
+        ]);
+
+        sender
+            .send(DataLayerCommands::UpdateModeScope(
+                item_id,
+                updated_mode_scope.clone(),
+            ))
+            .await
+            .unwrap();
+
+        let surreal_tables = SurrealTables::new(&sender).await.unwrap();
+        assert_eq!(surreal_tables.surreal_items.len(), 1);
+        assert_eq!(
+            surreal_tables.surreal_items[0].mode_scope,
+            updated_mode_scope
         );
 
         drop(sender);

@@ -9,7 +9,7 @@ use std::{fmt::Display, iter::chain};
 use ahash::{HashMap, HashSet};
 use better_term::{Color, Style};
 use chrono::{DateTime, Local, Utc};
-use inquire::{InquireError, Select, Text};
+use inquire::{InquireError, MultiSelect, Select, Text};
 use surrealdb::RecordId;
 use tokio::sync::mpsc::Sender;
 use urgency_plan::present_set_ready_and_urgency_plan_menu;
@@ -20,7 +20,8 @@ use crate::{
     data_storage::surrealdb_layer::{
         data_layer_commands::DataLayerCommands,
         surreal_item::{
-            Responsibility, SurrealHowMuchIsInMyControl, SurrealItemType, SurrealMotivationKind,
+            Responsibility, SurrealHowMuchIsInMyControl, SurrealItemModeScope, SurrealItemType,
+            SurrealMotivationKind,
         },
         surreal_tables::SurrealTables,
         surreal_working_on::SurrealWorkingOn,
@@ -64,6 +65,9 @@ enum DoNowListSingleItemSelection<'e> {
     StartWorkingOnThis,
     GiveThisItemAParent,
     ChangeReadyAndUrgencyPlan,
+    ChangeModeScope {
+        current: &'e SurrealItemModeScope,
+    },
     UnableToDoThisRightNow {
         started: Option<&'e SurrealWorkingOn>,
     },
@@ -142,6 +146,9 @@ impl Display for DoNowListSingleItemSelection<'_> {
             Self::Finished => write!(f, "I finished"),
             Self::ReturnToDoNowList => write!(f, "Return to the Do Now Menu"),
             Self::ChangeReadyAndUrgencyPlan => write!(f, "Change Ready & Urgency Plan"),
+            Self::ChangeModeScope { current } => {
+                write!(f, "Change Mode Scope (Currently: {})", describe_mode_scope(current))
+            }
         }
     }
 }
@@ -233,6 +240,9 @@ impl<'e> DoNowListSingleItemSelection<'e> {
             current: item_node.get_type(),
         });
         list.push(Self::ChangeReadyAndUrgencyPlan);
+        list.push(Self::ChangeModeScope {
+            current: item_node.get_item().get_mode_scope(),
+        });
 
         list.extend(vec![
             Self::UpdateSummary,
@@ -434,6 +444,23 @@ pub(crate) async fn present_do_now_list_item_selected(
             let base_data = do_now_list.get_base_data();
             present_set_ready_and_urgency_plan_menu(menu_for, base_data, send_to_data_storage_layer)
                 .await
+        }
+        Ok(DoNowListSingleItemSelection::ChangeModeScope { .. }) => {
+            present_set_mode_scope_menu(
+                menu_for.get_item(),
+                do_now_list.get_base_data(),
+                send_to_data_storage_layer,
+            )
+            .await?;
+
+            Box::pin(present_do_now_list_item_selected(
+                menu_for,
+                why_in_scope,
+                when_selected,
+                do_now_list,
+                send_to_data_storage_layer,
+            ))
+            .await
         }
         Ok(DoNowListSingleItemSelection::UpdateSummary) => {
             update_item_summary(menu_for.get_item(), send_to_data_storage_layer).await?;
@@ -966,6 +993,131 @@ impl IsAPersonOrGroupAroundSelection {
     fn create_list() -> Vec<Self> {
         vec![Self::Yes, Self::No]
     }
+}
+
+#[derive(Clone)]
+enum ModeScopeSelection {
+    AllModes,
+    OnlyModes,
+    ExceptModes,
+}
+
+impl Display for ModeScopeSelection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ModeScopeSelection::AllModes => write!(f, "All Modes"),
+            ModeScopeSelection::OnlyModes => write!(f, "Only These Modes"),
+            ModeScopeSelection::ExceptModes => write!(f, "All Except These Modes"),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct ModeOption {
+    id: RecordId,
+    name: String,
+}
+
+impl Display for ModeOption {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+fn describe_mode_scope(mode_scope: &SurrealItemModeScope) -> String {
+    match mode_scope {
+        SurrealItemModeScope::AllModes => "All Modes".to_string(),
+        SurrealItemModeScope::OnlyModes(modes) => format!("Only {} mode(s)", modes.len()),
+        SurrealItemModeScope::ExceptModes(modes) => format!("Except {} mode(s)", modes.len()),
+    }
+}
+
+async fn present_set_mode_scope_menu(
+    item: &Item<'_>,
+    base_data: &BaseData,
+    send_to_data_storage_layer: &Sender<DataLayerCommands>,
+) -> Result<(), ()> {
+    let scope_options = vec![
+        ModeScopeSelection::AllModes,
+        ModeScopeSelection::OnlyModes,
+        ModeScopeSelection::ExceptModes,
+    ];
+
+    let starting_cursor = match item.get_mode_scope() {
+        SurrealItemModeScope::AllModes => 0,
+        SurrealItemModeScope::OnlyModes(_) => 1,
+        SurrealItemModeScope::ExceptModes(_) => 2,
+    };
+
+    let selected_scope = Select::new("Select mode scope for this item", scope_options)
+        .with_page_size(default_select_page_size())
+        .with_starting_cursor(starting_cursor)
+        .prompt();
+
+    let selected_scope = match selected_scope {
+        Ok(selected_scope) => selected_scope,
+        Err(InquireError::OperationCanceled) => return Ok(()),
+        Err(InquireError::OperationInterrupted) => return Err(()),
+        Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+    };
+
+    let all_modes = base_data
+        .get_modes()
+        .iter()
+        .map(|mode| ModeOption {
+            id: mode.get_surreal_id().clone(),
+            name: mode.get_name().to_string(),
+        })
+        .collect::<Vec<_>>();
+
+    let mode_scope = match selected_scope {
+        ModeScopeSelection::AllModes => SurrealItemModeScope::AllModes,
+        ModeScopeSelection::OnlyModes | ModeScopeSelection::ExceptModes => {
+            if all_modes.is_empty() {
+                println!("No modes exist yet. Configure modes first, then set item mode scope.");
+                return Ok(());
+            }
+
+            let selected_modes = MultiSelect::new(
+                "Select modes (Space: select, Enter: done)",
+                all_modes,
+            )
+            .with_page_size(default_select_page_size())
+            .prompt();
+
+            let selected_modes = match selected_modes {
+                Ok(selected_modes) => selected_modes,
+                Err(InquireError::OperationCanceled) => return Ok(()),
+                Err(InquireError::OperationInterrupted) => return Err(()),
+                Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
+            };
+
+            let selected_mode_ids = selected_modes
+                .iter()
+                .map(|mode| mode.id.clone())
+                .collect::<Vec<_>>();
+
+            match selected_scope {
+                ModeScopeSelection::OnlyModes => {
+                    SurrealItemModeScope::OnlyModes(selected_mode_ids)
+                }
+                ModeScopeSelection::ExceptModes => {
+                    SurrealItemModeScope::ExceptModes(selected_mode_ids)
+                }
+                ModeScopeSelection::AllModes => unreachable!(),
+            }
+        }
+    };
+
+    send_to_data_storage_layer
+        .send(DataLayerCommands::UpdateModeScope(
+            item.get_surreal_record_id().clone(),
+            mode_scope,
+        ))
+        .await
+        .unwrap();
+
+    Ok(())
 }
 
 pub(crate) async fn present_is_person_or_group_around_menu(

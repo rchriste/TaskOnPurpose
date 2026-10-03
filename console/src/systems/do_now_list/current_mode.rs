@@ -1,7 +1,10 @@
 use surrealdb::RecordId;
 
 use crate::{
-    base_data::mode::Mode, data_storage::surrealdb_layer::surreal_current_mode::SurrealCurrentMode,
+    base_data::mode::Mode,
+    data_storage::surrealdb_layer::{
+        surreal_current_mode::SurrealCurrentMode, surreal_item::SurrealUrgency,
+    },
     node::item_node::ItemNode,
 };
 
@@ -48,12 +51,27 @@ impl CurrentMode {
     }
 
     pub(crate) fn is_urgency_in_the_mode(&self, item_node: &ItemNode) -> bool {
-        let _ = item_node;
-        true
+        match item_node.get_urgency_now() {
+            Some(
+                SurrealUrgency::MoreUrgentThanAnythingIncludingScheduled
+                | SurrealUrgency::ScheduledAnyMode(_)
+                | SurrealUrgency::MoreUrgentThanMode,
+            ) => true,
+            Some(
+                SurrealUrgency::InTheModeScheduled(_)
+                | SurrealUrgency::InTheModeDefinitelyUrgent
+                | SurrealUrgency::InTheModeMaybeUrgent
+                | SurrealUrgency::InTheModeByImportance,
+            )
+            | None => self.is_item_in_the_mode(item_node),
+        }
     }
 
     pub(crate) fn is_importance_in_the_mode(&self, item_node: &ItemNode) -> bool {
-        let _ = item_node;
-        true
+        self.is_item_in_the_mode(item_node)
+    }
+
+    pub(crate) fn is_item_in_the_mode(&self, item_node: &ItemNode) -> bool {
+        item_node.get_item().is_in_mode_scope(self.get_mode_id())
     }
 }

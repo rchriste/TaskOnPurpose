@@ -8,7 +8,8 @@ use crate::{
     calculated_data::parent_lookup::ParentLookup,
     data_storage::surrealdb_layer::surreal_item::{
         Responsibility, SurrealDependency, SurrealFrequency, SurrealItem, SurrealItemType,
-        SurrealMotivationKind, SurrealOrderedSubItem, SurrealReviewGuidance, SurrealUrgencyPlan,
+        SurrealItemModeScope, SurrealMotivationKind, SurrealOrderedSubItem,
+        SurrealReviewGuidance, SurrealUrgencyPlan,
     },
 };
 
@@ -194,6 +195,22 @@ impl<'b> Item<'b> {
     pub(crate) fn get_now_sql(&self) -> &Datetime {
         &self.now_sql
     }
+
+    pub(crate) fn get_mode_scope(&self) -> &SurrealItemModeScope {
+        &self.surreal_item.mode_scope
+    }
+
+    pub(crate) fn is_in_mode_scope(&self, current_mode_id: Option<&RecordId>) -> bool {
+        match self.get_mode_scope() {
+            SurrealItemModeScope::AllModes => true,
+            SurrealItemModeScope::OnlyModes(allowed_modes) => {
+                current_mode_id.is_some_and(|id| allowed_modes.iter().any(|mode| mode == id))
+            }
+            SurrealItemModeScope::ExceptModes(excluded_modes) => {
+                current_mode_id.is_none_or(|id| excluded_modes.iter().all(|mode| mode != id))
+            }
+        }
+    }
 }
 
 impl<'s> Item<'s> {
@@ -349,7 +366,7 @@ impl<'s> Item<'s> {
 #[cfg(test)]
 mod tests {
     use crate::data_storage::surrealdb_layer::{
-        surreal_item::SurrealItemBuilder, surreal_tables::SurrealTablesBuilder,
+        surreal_item::{SurrealItemBuilder, SurrealItemModeScope}, surreal_tables::SurrealTablesBuilder,
     };
 
     use super::*;
@@ -435,5 +452,84 @@ mod tests {
             .expect("Will find parent item in items");
 
         assert!(under_test_parent_item.has_active_children(&items));
+    }
+
+    #[test]
+    fn mode_scope_all_modes_includes_any_current_mode() {
+        let item = SurrealItemBuilder::default()
+            .id(Some(("surreal_item", "scope_all").into()))
+            .summary("Scope all")
+            .item_type(SurrealItemType::Action)
+            .mode_scope(SurrealItemModeScope::AllModes)
+            .build()
+            .unwrap();
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(vec![item.clone()])
+            .build()
+            .unwrap();
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+        let mode_id: RecordId = ("modes", "work").into();
+
+        let under_test = items
+            .get(item.id.as_ref().expect("Item has id"))
+            .expect("Item should be present");
+
+        assert!(under_test.is_in_mode_scope(Some(&mode_id)));
+        assert!(under_test.is_in_mode_scope(None));
+    }
+
+    #[test]
+    fn mode_scope_only_modes_requires_current_mode_to_be_in_list() {
+        let work_mode: RecordId = ("modes", "work").into();
+        let play_mode: RecordId = ("modes", "play").into();
+        let item = SurrealItemBuilder::default()
+            .id(Some(("surreal_item", "scope_only").into()))
+            .summary("Scope only")
+            .item_type(SurrealItemType::Action)
+            .mode_scope(SurrealItemModeScope::OnlyModes(vec![work_mode.clone()]))
+            .build()
+            .unwrap();
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(vec![item.clone()])
+            .build()
+            .unwrap();
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+
+        let under_test = items
+            .get(item.id.as_ref().expect("Item has id"))
+            .expect("Item should be present");
+
+        assert!(under_test.is_in_mode_scope(Some(&work_mode)));
+        assert!(!under_test.is_in_mode_scope(Some(&play_mode)));
+        assert!(!under_test.is_in_mode_scope(None));
+    }
+
+    #[test]
+    fn mode_scope_except_modes_excludes_listed_modes() {
+        let work_mode: RecordId = ("modes", "work").into();
+        let play_mode: RecordId = ("modes", "play").into();
+        let item = SurrealItemBuilder::default()
+            .id(Some(("surreal_item", "scope_except").into()))
+            .summary("Scope except")
+            .item_type(SurrealItemType::Action)
+            .mode_scope(SurrealItemModeScope::ExceptModes(vec![work_mode.clone()]))
+            .build()
+            .unwrap();
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(vec![item.clone()])
+            .build()
+            .unwrap();
+        let now = Utc::now();
+        let items = surreal_tables.make_items(&now);
+
+        let under_test = items
+            .get(item.id.as_ref().expect("Item has id"))
+            .expect("Item should be present");
+
+        assert!(!under_test.is_in_mode_scope(Some(&work_mode)));
+        assert!(under_test.is_in_mode_scope(Some(&play_mode)));
+        assert!(under_test.is_in_mode_scope(None));
     }
 }

@@ -57,6 +57,7 @@ impl DoNowList {
                     .filter(|x| current_mode.is_importance_in_the_mode(x.get_item_node()))
                     .filter_map(|x| x.recursive_get_most_important_and_ready(all_items_status))
                     .map(ActionWithItemStatus::MakeProgress)
+                    .filter(|action| current_mode.is_importance_in_the_mode(action.get_item_node()))
                     .map(|action| {
                         let mut why_in_scope = HashSet::default();
                         why_in_scope.insert(WhyInScope::Importance);
@@ -67,6 +68,7 @@ impl DoNowList {
                     .flat_map(|x| {
                         x.recursive_get_urgent_bullet_list(all_items_status, Vec::default())
                     })
+                    .filter(|action| current_mode.is_urgency_in_the_mode(action.get_item_node()))
                     .map(|action| {
                         let mut why_in_scope = HashSet::default();
                         why_in_scope.insert(WhyInScope::Urgency);
@@ -206,5 +208,160 @@ impl<'t> PushIfNew<'t> for Vec<WhyInScopeAndActionWithItemStatus<'t>> {
                 assert!(item.get_why_in_scope() == x.get_why_in_scope());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use crate::{
+        base_data::BaseData,
+        calculated_data::CalculatedData,
+        data_storage::surrealdb_layer::{
+            surreal_current_mode::SurrealCurrentMode,
+            surreal_item::{
+                SurrealItemBuilder, SurrealItemModeScope, SurrealItemType, SurrealUrgency,
+                SurrealUrgencyPlan,
+            },
+            surreal_mode::SurrealMode,
+            surreal_tables::SurrealTablesBuilder,
+        },
+        node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
+    };
+
+    use super::DoNowList;
+
+    #[test]
+    fn do_now_list_excludes_items_not_in_current_mode_scope() {
+        let work_mode_id: surrealdb::RecordId = "modes:work".parse().unwrap();
+        let play_mode_id: surrealdb::RecordId = "modes:play".parse().unwrap();
+
+        let all_modes_item = SurrealItemBuilder::default()
+            .id(Some(("surreal_item", "all").into()))
+            .summary("All Modes Item")
+            .item_type(SurrealItemType::Action)
+            .mode_scope(SurrealItemModeScope::AllModes)
+            .build()
+            .unwrap();
+
+        let only_play_item = SurrealItemBuilder::default()
+            .id(Some(("surreal_item", "only_play").into()))
+            .summary("Only Play Item")
+            .item_type(SurrealItemType::Action)
+            .mode_scope(SurrealItemModeScope::OnlyModes(vec![play_mode_id.clone()]))
+            .build()
+            .unwrap();
+
+        let except_work_item = SurrealItemBuilder::default()
+            .id(Some(("surreal_item", "except_work").into()))
+            .summary("Except Work Item")
+            .item_type(SurrealItemType::Action)
+            .mode_scope(SurrealItemModeScope::ExceptModes(vec![work_mode_id.clone()]))
+            .build()
+            .unwrap();
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(vec![all_modes_item.clone(), only_play_item, except_work_item])
+            .surreal_modes(vec![
+                SurrealMode {
+                    id: Some(work_mode_id.clone()),
+                    name: "Work".to_string(),
+                    version: 0,
+                    parent: None,
+                },
+                SurrealMode {
+                    id: Some(play_mode_id),
+                    name: "Play".to_string(),
+                    version: 0,
+                    parent: None,
+                },
+            ])
+            .surreal_current_modes(vec![SurrealCurrentMode {
+                id: Some(("current_modes", "current_mode").into()),
+                version: 0,
+                current_mode: Some(work_mode_id),
+            }])
+            .build()
+            .unwrap();
+
+        let now = Utc::now();
+        let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+        let calculated_data = CalculatedData::new_from_base_data(base_data);
+        let do_now = DoNowList::new_do_now_list(calculated_data, &now);
+
+        let summaries = do_now
+            .get_ordered_do_now_list()
+            .iter()
+            .flat_map(|entry| match entry {
+                UrgencyLevelItemWithItemStatus::SingleItem(item) => {
+                    vec![item.get_action().get_item_node().get_item().get_summary().to_string()]
+                }
+                UrgencyLevelItemWithItemStatus::MultipleItems(items) => items
+                    .iter()
+                    .map(|item| item.get_action().get_item_node().get_item().get_summary().to_string())
+                    .collect::<Vec<_>>(),
+            })
+            .collect::<Vec<_>>();
+
+        assert!(summaries.iter().any(|x| x == "All Modes Item"));
+        assert!(!summaries.iter().any(|x| x == "Only Play Item"));
+        assert!(!summaries.iter().any(|x| x == "Except Work Item"));
+
+        assert_eq!(do_now.get_current_mode().get_name(), "Work");
+        assert_eq!(all_modes_item.mode_scope, SurrealItemModeScope::AllModes);
+    }
+
+    #[test]
+    fn do_now_list_includes_mode_excluded_item_when_urgency_overrides_mode() {
+        let work_mode_id: surrealdb::RecordId = "modes:work".parse().unwrap();
+
+        let mode_excluded_but_overriding_urgency = SurrealItemBuilder::default()
+            .id(Some(("surreal_item", "override_urgency").into()))
+            .summary("Override urgency item")
+            .item_type(SurrealItemType::Action)
+            .mode_scope(SurrealItemModeScope::ExceptModes(vec![work_mode_id.clone()]))
+            .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(
+                SurrealUrgency::MoreUrgentThanMode,
+            )))
+            .build()
+            .unwrap();
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(vec![mode_excluded_but_overriding_urgency])
+            .surreal_modes(vec![SurrealMode {
+                id: Some(work_mode_id.clone()),
+                name: "Work".to_string(),
+                version: 0,
+                parent: None,
+            }])
+            .surreal_current_modes(vec![SurrealCurrentMode {
+                id: Some(("current_modes", "current_mode").into()),
+                version: 0,
+                current_mode: Some(work_mode_id),
+            }])
+            .build()
+            .unwrap();
+
+        let now = Utc::now();
+        let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+        let calculated_data = CalculatedData::new_from_base_data(base_data);
+        let do_now = DoNowList::new_do_now_list(calculated_data, &now);
+
+        let summaries = do_now
+            .get_ordered_do_now_list()
+            .iter()
+            .flat_map(|entry| match entry {
+                UrgencyLevelItemWithItemStatus::SingleItem(item) => {
+                    vec![item.get_action().get_item_node().get_item().get_summary().to_string()]
+                }
+                UrgencyLevelItemWithItemStatus::MultipleItems(items) => items
+                    .iter()
+                    .map(|item| item.get_action().get_item_node().get_item().get_summary().to_string())
+                    .collect::<Vec<_>>(),
+            })
+            .collect::<Vec<_>>();
+
+        assert!(summaries.iter().any(|x| x == "Override urgency item"));
     }
 }
