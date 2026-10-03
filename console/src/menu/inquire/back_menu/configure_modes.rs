@@ -43,6 +43,7 @@ impl Display for ConfigureModesOptions<'_> {
 enum ConfigureModesOptionsSelected<'e> {
     AddWithParent(&'e ModeNode<'e>),
     EditName(&'e ModeNode<'e>),
+    Remove(&'e ModeNode<'e>),
     Back,
     Done,
 }
@@ -60,8 +61,27 @@ impl Display for ConfigureModesOptionsSelected<'_> {
                 "Edit Name of {}",
                 DisplayModeNode::new(mode, DisplayFormat::SingleLine)
             ),
+            ConfigureModesOptionsSelected::Remove(mode) => write!(
+                f,
+                "Remove {}",
+                DisplayModeNode::new(mode, DisplayFormat::SingleLine)
+            ),
             ConfigureModesOptionsSelected::Back => write!(f, "Back"),
             ConfigureModesOptionsSelected::Done => write!(f, "Done (Return to \"Do Now\" List)"),
+        }
+    }
+}
+
+enum ConfirmRemoveOption {
+    No,
+    Yes,
+}
+
+impl Display for ConfirmRemoveOption {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfirmRemoveOption::No => write!(f, "No, keep it"),
+            ConfirmRemoveOption::Yes => write!(f, "Yes, remove it"),
         }
     }
 }
@@ -144,6 +164,7 @@ pub(crate) async fn configure_modes(
             let options = vec![
                 ConfigureModesOptionsSelected::AddWithParent(mode),
                 ConfigureModesOptionsSelected::EditName(mode),
+                ConfigureModesOptionsSelected::Remove(mode),
                 ConfigureModesOptionsSelected::Back,
                 ConfigureModesOptionsSelected::Done,
             ];
@@ -195,6 +216,36 @@ pub(crate) async fn configure_modes(
                             Box::pin(configure_modes(send_to_data_storage_layer)).await
                         }
                         Err(InquireError::OperationCanceled) => {
+                            Box::pin(configure_modes(send_to_data_storage_layer)).await
+                        }
+                        Err(InquireError::OperationInterrupted) => Err(()),
+                        Err(_) => {
+                            todo!()
+                        }
+                    }
+                }
+                Ok(ConfigureModesOptionsSelected::Remove(mode)) => {
+                    let confirmation_prompt = format!(
+                        "Remove mode {}?",
+                        DisplayModeNode::new(mode, DisplayFormat::SingleLine)
+                    );
+                    let confirmation = Select::new(
+                        &confirmation_prompt,
+                        vec![ConfirmRemoveOption::No, ConfirmRemoveOption::Yes],
+                    )
+                    .with_page_size(default_select_page_size())
+                    .prompt();
+
+                    match confirmation {
+                        Ok(ConfirmRemoveOption::Yes) => {
+                            send_to_data_storage_layer
+                                .send(DataLayerCommands::DeleteMode(mode.get_surreal_id().clone()))
+                                .await
+                                .unwrap();
+
+                            Box::pin(configure_modes(send_to_data_storage_layer)).await
+                        }
+                        Ok(ConfirmRemoveOption::No) | Err(InquireError::OperationCanceled) => {
                             Box::pin(configure_modes(send_to_data_storage_layer)).await
                         }
                         Err(InquireError::OperationInterrupted) => Err(()),

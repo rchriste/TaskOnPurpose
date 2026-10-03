@@ -100,6 +100,7 @@ pub(crate) enum DataLayerCommands {
     AddItemDependencyNewEvent(RecordId, NewEvent),
     UpdateSummary(RecordId, String),
     UpdateModeName(RecordId, String),
+    DeleteMode(RecordId),
     UpdateUrgencyPlan(RecordId, Option<SurrealUrgencyPlan>),
     UpdateItemReviewFrequency(RecordId, SurrealFrequency, SurrealReviewGuidance),
     UpdateItemLastReviewedDate(RecordId, Datetime),
@@ -405,6 +406,9 @@ pub(crate) async fn data_storage_start_and_run(
                     .unwrap()
                     .unwrap();
                 assert_eq!(updated.name, new_name);
+            }
+            Some(DataLayerCommands::DeleteMode(mode_id)) => {
+                delete_mode(mode_id, &db).await;
             }
             Some(DataLayerCommands::UpdateResponsibilityAndItemType(
                 item,
@@ -1578,6 +1582,71 @@ async fn update_item_summary(item_to_update: RecordId, new_summary: String, db: 
     assert_eq!(updated.summary, new_summary);
 }
 
+async fn delete_mode(mode_id: RecordId, db: &Surreal<Any>) {
+    let mode_to_delete: Option<SurrealMode> = db.select(mode_id.clone()).await.unwrap();
+    let Some(mode_to_delete) = mode_to_delete else {
+        return;
+    };
+
+    // Keep the mode tree valid by moving direct children to the deleted mode's parent.
+    let all_modes: Vec<SurrealMode> = db.select(SurrealMode::TABLE_NAME).await.unwrap();
+    for mut mode in all_modes {
+        if mode.parent.as_ref() == Some(&mode_id) {
+            mode.parent = mode_to_delete.parent.clone();
+            let record_id = mode.id.clone().expect("Mode must have an id");
+            let updated: SurrealMode = db
+                .update(&record_id)
+                .content(mode.clone())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(updated, mode);
+        }
+    }
+
+    // If the deleted mode is selected as current mode, clear current mode selection.
+    let current_modes: Vec<SurrealCurrentMode> =
+        db.select(SurrealCurrentMode::TABLE_NAME).await.unwrap();
+    for mut current_mode in current_modes {
+        if current_mode.current_mode.as_ref() == Some(&mode_id) {
+            current_mode.current_mode = None;
+            let record_id = current_mode
+                .id
+                .clone()
+                .expect("Current mode row must have an id");
+            let updated: SurrealCurrentMode = db
+                .update(&record_id)
+                .content(current_mode.clone())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(updated, current_mode);
+        }
+    }
+
+    // Clear stale priorities scoped to this mode so old IDs are not retained.
+    let all_priorities: Vec<SurrealInTheMomentPriority> = db
+        .select(SurrealInTheMomentPriority::TABLE_NAME)
+        .await
+        .unwrap();
+    for mut priority in all_priorities {
+        if priority.for_mode.as_ref() == Some(&mode_id) {
+            priority.for_mode = None;
+            let record_id = priority.id.clone().expect("Priority row must have an id");
+            let updated: SurrealInTheMomentPriority = db
+                .update(&record_id)
+                .content(priority.clone())
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(updated, priority);
+        }
+    }
+
+    let deleted: Option<SurrealMode> = db.delete(&mode_id).await.unwrap();
+    assert!(deleted.is_some());
+}
+
 #[cfg(test)]
 mod tests {
     use tokio::sync::mpsc;
@@ -1586,7 +1655,7 @@ mod tests {
 
     use crate::{
         data_storage::surrealdb_layer::surreal_item::SurrealHowMuchIsInMyControl,
-        new_item::NewItemBuilder,
+        new_item::NewItemBuilder, new_mode::NewModeBuilder,
     };
 
     fn mem_config() -> SurrealDbConnectionConfig {
@@ -2537,6 +2606,196 @@ mod tests {
         let tables = load_from_surrealdb_upgrade_if_needed(&db).await;
         assert!(surreal_tables_has_any_data(&tables));
         assert_eq!(tables.surreal_items.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn delete_mode_when_mode_is_parent_reparents_children_to_grandparent() {
+        let (sender, receiver) = mpsc::channel(1);
+        let data_storage_join_handle =
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
+
+        sender
+            .send(DataLayerCommands::NewMode(
+                NewModeBuilder::default().name("Health").build().unwrap(),
+            ))
+            .await
+            .unwrap();
+
+        let tables = SurrealTables::new(&sender).await.unwrap();
+        let health_id = tables
+            .surreal_modes
+            .iter()
+            .find(|m| m.name == "Health")
+            .and_then(|m| m.id.clone())
+            .expect("Health mode should exist");
+
+        sender
+            .send(DataLayerCommands::NewMode(
+                NewModeBuilder::default()
+                    .name("Exercise")
+                    .parent(Some(health_id.clone()))
+                    .build()
+                    .unwrap(),
+            ))
+            .await
+            .unwrap();
+
+        let tables = SurrealTables::new(&sender).await.unwrap();
+        let exercise_id = tables
+            .surreal_modes
+            .iter()
+            .find(|m| m.name == "Exercise")
+            .and_then(|m| m.id.clone())
+            .expect("Exercise mode should exist");
+
+        sender
+            .send(DataLayerCommands::NewMode(
+                NewModeBuilder::default()
+                    .name("Running")
+                    .parent(Some(exercise_id.clone()))
+                    .build()
+                    .unwrap(),
+            ))
+            .await
+            .unwrap();
+        sender
+            .send(DataLayerCommands::NewMode(
+                NewModeBuilder::default()
+                    .name("Weights")
+                    .parent(Some(exercise_id.clone()))
+                    .build()
+                    .unwrap(),
+            ))
+            .await
+            .unwrap();
+
+        sender
+            .send(DataLayerCommands::DeleteMode(exercise_id.clone()))
+            .await
+            .unwrap();
+
+        let tables = SurrealTables::new(&sender).await.unwrap();
+        assert_eq!(tables.surreal_modes.len(), 3);
+        assert!(tables.surreal_modes.iter().all(|m| m.name != "Exercise"));
+
+        let running = tables
+            .surreal_modes
+            .iter()
+            .find(|m| m.name == "Running")
+            .expect("Running mode should exist");
+        let weights = tables
+            .surreal_modes
+            .iter()
+            .find(|m| m.name == "Weights")
+            .expect("Weights mode should exist");
+
+        assert_eq!(running.parent.as_ref(), Some(&health_id));
+        assert_eq!(weights.parent.as_ref(), Some(&health_id));
+
+        drop(sender);
+        data_storage_join_handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn delete_top_level_parent_mode_reparents_children_to_none() {
+        let (sender, receiver) = mpsc::channel(1);
+        let data_storage_join_handle =
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
+
+        sender
+            .send(DataLayerCommands::NewMode(
+                NewModeBuilder::default().name("Exercise").build().unwrap(),
+            ))
+            .await
+            .unwrap();
+
+        let tables = SurrealTables::new(&sender).await.unwrap();
+        let exercise_id = tables
+            .surreal_modes
+            .iter()
+            .find(|m| m.name == "Exercise")
+            .and_then(|m| m.id.clone())
+            .expect("Exercise mode should exist");
+
+        sender
+            .send(DataLayerCommands::NewMode(
+                NewModeBuilder::default()
+                    .name("Running")
+                    .parent(Some(exercise_id.clone()))
+                    .build()
+                    .unwrap(),
+            ))
+            .await
+            .unwrap();
+        sender
+            .send(DataLayerCommands::NewMode(
+                NewModeBuilder::default()
+                    .name("Weights")
+                    .parent(Some(exercise_id.clone()))
+                    .build()
+                    .unwrap(),
+            ))
+            .await
+            .unwrap();
+
+        sender
+            .send(DataLayerCommands::DeleteMode(exercise_id.clone()))
+            .await
+            .unwrap();
+
+        let tables = SurrealTables::new(&sender).await.unwrap();
+        assert_eq!(tables.surreal_modes.len(), 2);
+        assert!(tables.surreal_modes.iter().all(|m| m.name != "Exercise"));
+
+        let running = tables
+            .surreal_modes
+            .iter()
+            .find(|m| m.name == "Running")
+            .expect("Running mode should exist");
+        let weights = tables
+            .surreal_modes
+            .iter()
+            .find(|m| m.name == "Weights")
+            .expect("Weights mode should exist");
+
+        assert!(running.parent.is_none());
+        assert!(weights.parent.is_none());
+
+        drop(sender);
+        data_storage_join_handle.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn delete_mode_when_only_one_mode_exists_removes_it_from_tables() {
+        let (sender, receiver) = mpsc::channel(1);
+        let data_storage_join_handle =
+            tokio::spawn(async move { data_storage_start_and_run(receiver, mem_config()).await });
+
+        sender
+            .send(DataLayerCommands::NewMode(
+                NewModeBuilder::default().name("Exercise").build().unwrap(),
+            ))
+            .await
+            .unwrap();
+
+        let tables = SurrealTables::new(&sender).await.unwrap();
+        assert_eq!(1, tables.surreal_modes.len());
+        let mode_id = tables
+            .surreal_modes
+            .first()
+            .and_then(|m| m.id.clone())
+            .expect("Exercise mode should exist");
+
+        sender
+            .send(DataLayerCommands::DeleteMode(mode_id))
+            .await
+            .unwrap();
+
+        let tables = SurrealTables::new(&sender).await.unwrap();
+        assert!(tables.surreal_modes.is_empty());
+
+        drop(sender);
+        data_storage_join_handle.await.unwrap();
     }
 
     #[tokio::test]
