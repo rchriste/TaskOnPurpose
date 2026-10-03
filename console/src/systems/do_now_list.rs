@@ -257,12 +257,18 @@ mod tests {
             .id(Some(("surreal_item", "except_work").into()))
             .summary("Except Work Item")
             .item_type(SurrealItemType::Action)
-            .mode_scope(SurrealItemModeScope::ExceptModes(vec![work_mode_id.clone()]))
+            .mode_scope(SurrealItemModeScope::ExceptModes(vec![
+                work_mode_id.clone(),
+            ]))
             .build()
             .unwrap();
 
         let surreal_tables = SurrealTablesBuilder::default()
-            .surreal_items(vec![all_modes_item.clone(), only_play_item, except_work_item])
+            .surreal_items(vec![
+                all_modes_item.clone(),
+                only_play_item,
+                except_work_item,
+            ])
             .surreal_modes(vec![
                 SurrealMode {
                     id: Some(work_mode_id.clone()),
@@ -295,11 +301,23 @@ mod tests {
             .iter()
             .flat_map(|entry| match entry {
                 UrgencyLevelItemWithItemStatus::SingleItem(item) => {
-                    vec![item.get_action().get_item_node().get_item().get_summary().to_string()]
+                    vec![
+                        item.get_action()
+                            .get_item_node()
+                            .get_item()
+                            .get_summary()
+                            .to_string(),
+                    ]
                 }
                 UrgencyLevelItemWithItemStatus::MultipleItems(items) => items
                     .iter()
-                    .map(|item| item.get_action().get_item_node().get_item().get_summary().to_string())
+                    .map(|item| {
+                        item.get_action()
+                            .get_item_node()
+                            .get_item()
+                            .get_summary()
+                            .to_string()
+                    })
                     .collect::<Vec<_>>(),
             })
             .collect::<Vec<_>>();
@@ -320,7 +338,9 @@ mod tests {
             .id(Some(("surreal_item", "override_urgency").into()))
             .summary("Override urgency item")
             .item_type(SurrealItemType::Action)
-            .mode_scope(SurrealItemModeScope::ExceptModes(vec![work_mode_id.clone()]))
+            .mode_scope(SurrealItemModeScope::ExceptModes(vec![
+                work_mode_id.clone(),
+            ]))
             .urgency_plan(Some(SurrealUrgencyPlan::StaysTheSame(
                 SurrealUrgency::MoreUrgentThanMode,
             )))
@@ -353,11 +373,23 @@ mod tests {
             .iter()
             .flat_map(|entry| match entry {
                 UrgencyLevelItemWithItemStatus::SingleItem(item) => {
-                    vec![item.get_action().get_item_node().get_item().get_summary().to_string()]
+                    vec![
+                        item.get_action()
+                            .get_item_node()
+                            .get_item()
+                            .get_summary()
+                            .to_string(),
+                    ]
                 }
                 UrgencyLevelItemWithItemStatus::MultipleItems(items) => items
                     .iter()
-                    .map(|item| item.get_action().get_item_node().get_item().get_summary().to_string())
+                    .map(|item| {
+                        item.get_action()
+                            .get_item_node()
+                            .get_item()
+                            .get_summary()
+                            .to_string()
+                    })
                     .collect::<Vec<_>>(),
             })
             .collect::<Vec<_>>();

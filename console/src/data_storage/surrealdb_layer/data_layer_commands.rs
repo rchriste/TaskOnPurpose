@@ -36,8 +36,8 @@ use super::{
         SurrealAction, SurrealInTheMomentPriority, SurrealPriorityKind,
     },
     surreal_item::{
-        Responsibility, SurrealDependency, SurrealFrequency, SurrealItem, SurrealItemOldVersion,
-        SurrealItemModeScope, SurrealItemType, SurrealOrderedSubItem, SurrealReviewGuidance,
+        Responsibility, SurrealDependency, SurrealFrequency, SurrealItem, SurrealItemModeScope,
+        SurrealItemOldVersion, SurrealItemType, SurrealOrderedSubItem, SurrealReviewGuidance,
         SurrealUrgencyPlan,
     },
     surreal_mode,
@@ -1676,7 +1676,8 @@ mod tests {
         data_storage::surrealdb_layer::surreal_item::{
             SurrealHowMuchIsInMyControl, SurrealItemModeScope,
         },
-        new_item::NewItemBuilder, new_mode::NewModeBuilder,
+        new_item::NewItemBuilder,
+        new_mode::NewModeBuilder,
     };
 
     fn mem_config() -> SurrealDbConnectionConfig {

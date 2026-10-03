@@ -7,9 +7,9 @@ use surrealdb::{RecordId, sql::Datetime};
 use crate::{
     calculated_data::parent_lookup::ParentLookup,
     data_storage::surrealdb_layer::surreal_item::{
-        Responsibility, SurrealDependency, SurrealFrequency, SurrealItem, SurrealItemType,
-        SurrealItemModeScope, SurrealMotivationKind, SurrealOrderedSubItem,
-        SurrealReviewGuidance, SurrealUrgencyPlan,
+        Responsibility, SurrealDependency, SurrealFrequency, SurrealItem, SurrealItemModeScope,
+        SurrealItemType, SurrealMotivationKind, SurrealOrderedSubItem, SurrealReviewGuidance,
+        SurrealUrgencyPlan,
     },
 };
 
@@ -366,7 +366,8 @@ impl<'s> Item<'s> {
 #[cfg(test)]
 mod tests {
     use crate::data_storage::surrealdb_layer::{
-        surreal_item::{SurrealItemBuilder, SurrealItemModeScope}, surreal_tables::SurrealTablesBuilder,
+        surreal_item::{SurrealItemBuilder, SurrealItemModeScope},
+        surreal_tables::SurrealTablesBuilder,
     };
 
     use super::*;

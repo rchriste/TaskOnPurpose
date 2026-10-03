@@ -28,7 +28,8 @@ use crate::{
     },
     display::{
         DisplayStyle, display_item::DisplayItem, display_item_node::DisplayItemNode,
-        display_item_type::DisplayItemType, display_urgency_plan::DisplayUrgency,
+        display_item_type::DisplayItemType, display_mode_node::DisplayModeNode,
+        display_urgency_plan::DisplayUrgency,
     },
     menu::inquire::{
         back_menu::capture,
@@ -49,7 +50,7 @@ use crate::{
     },
     new_item,
     node::{
-        Filter, item_node::ItemNode, item_status::ItemStatus,
+        Filter, item_node::ItemNode, item_status::ItemStatus, mode_node::ModeNode,
         why_in_scope_and_action_with_item_status::WhyInScope,
     },
     systems::do_now_list::DoNowList,
@@ -147,7 +148,11 @@ impl Display for DoNowListSingleItemSelection<'_> {
             Self::ReturnToDoNowList => write!(f, "Return to the Do Now Menu"),
             Self::ChangeReadyAndUrgencyPlan => write!(f, "Change Ready & Urgency Plan"),
             Self::ChangeModeScope { current } => {
-                write!(f, "Change Mode Scope (Currently: {})", describe_mode_scope(current))
+                write!(
+                    f,
+                    "Change Mode Scope (Currently: {})",
+                    describe_mode_scope(current)
+                )
             }
         }
     }
@@ -1012,15 +1017,15 @@ impl Display for ModeScopeSelection {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 struct ModeOption {
     id: RecordId,
-    name: String,
+    display_name: String,
 }
 
 impl Display for ModeOption {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}", self.display_name)
     }
 }
 
@@ -1061,29 +1066,66 @@ async fn present_set_mode_scope_menu(
         Err(err) => panic!("Unexpected error, try restarting the terminal: {}", err),
     };
 
-    let all_modes = base_data
-        .get_modes()
+    let all_modes = base_data.get_modes();
+    let mut mode_nodes = all_modes
         .iter()
-        .map(|mode| ModeOption {
-            id: mode.get_surreal_id().clone(),
-            name: mode.get_name().to_string(),
+        .map(|mode| ModeNode::new(mode, all_modes))
+        .collect::<Vec<_>>();
+    mode_nodes.sort_by_key(|mode_node| {
+        format!(
+            "{}",
+            DisplayModeNode::new(mode_node, DisplayFormat::SingleLine)
+        )
+    });
+
+    let all_mode_options = mode_nodes
+        .iter()
+        .map(|mode_node| ModeOption {
+            id: mode_node.get_surreal_id().clone(),
+            display_name: format!(
+                "{}",
+                DisplayModeNode::new(mode_node, DisplayFormat::SingleLine)
+            ),
         })
         .collect::<Vec<_>>();
 
     let mode_scope = match selected_scope {
         ModeScopeSelection::AllModes => SurrealItemModeScope::AllModes,
         ModeScopeSelection::OnlyModes | ModeScopeSelection::ExceptModes => {
-            if all_modes.is_empty() {
+            if all_mode_options.is_empty() {
                 println!("No modes exist yet. Configure modes first, then set item mode scope.");
                 return Ok(());
             }
 
-            let selected_modes = MultiSelect::new(
+            let selected_ids_in_current_setting = match item.get_mode_scope() {
+                SurrealItemModeScope::OnlyModes(modes)
+                | SurrealItemModeScope::ExceptModes(modes) => modes.clone(),
+                SurrealItemModeScope::AllModes => Vec::default(),
+            };
+
+            let default_indexes = all_mode_options
+                .iter()
+                .enumerate()
+                .filter_map(|(index, mode_option)| {
+                    if selected_ids_in_current_setting.contains(&mode_option.id) {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let mut multi_select = MultiSelect::new(
                 "Select modes (Space: select, Enter: done)",
-                all_modes,
+                all_mode_options,
             )
-            .with_page_size(default_select_page_size())
-            .prompt();
+            .with_page_size(default_select_page_size());
+
+            if !default_indexes.is_empty() {
+                multi_select = multi_select.with_default(&default_indexes);
+            }
+
+            let selected_modes = multi_select.prompt();
 
             let selected_modes = match selected_modes {
                 Ok(selected_modes) => selected_modes,
@@ -1098,9 +1140,7 @@ async fn present_set_mode_scope_menu(
                 .collect::<Vec<_>>();
 
             match selected_scope {
-                ModeScopeSelection::OnlyModes => {
-                    SurrealItemModeScope::OnlyModes(selected_mode_ids)
-                }
+                ModeScopeSelection::OnlyModes => SurrealItemModeScope::OnlyModes(selected_mode_ids),
                 ModeScopeSelection::ExceptModes => {
                     SurrealItemModeScope::ExceptModes(selected_mode_ids)
                 }
