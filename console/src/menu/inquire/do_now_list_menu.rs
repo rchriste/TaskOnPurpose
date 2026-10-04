@@ -38,7 +38,8 @@ use crate::{
     },
     display::{
         display_duration::DisplayDuration, display_item::DisplayItem,
-        display_item_node::DisplayFormat, display_item_status::DisplayItemStatus,
+        display_item_node::DisplayFormat,
+        display_item_status_with_urgency::DisplayItemStatusWithUrgency,
         display_mode_node::DisplayModeNode, display_scheduled_item::DisplayScheduledItem,
         display_urgency_level_item_with_item_status::DisplayUrgencyLevelItemWithItemStatus,
         display_why_in_scope_and_action_with_item_status::DisplayWhyInScopeAndActionWithItemStatus,
@@ -454,8 +455,11 @@ impl Display for EventTrigger<'_> {
                 write!(f, "⚡ Trigger or record that this event has happened")
             }
             EventTrigger::ItemDependentOnThisEvent(item) => {
-                let display =
-                    DisplayItemStatus::new(item, Filter::Active, DisplayFormat::SingleLine);
+                let display = DisplayItemStatusWithUrgency::new(
+                    item,
+                    Filter::Active,
+                    DisplayFormat::SingleLine,
+                );
                 write!(f, "{}", display)
             }
         }
