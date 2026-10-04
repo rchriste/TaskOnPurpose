@@ -752,11 +752,17 @@ async fn present_exclude_from_this_mode_menu(
         return Ok(());
     };
 
+    let current_mode_label = do_now_list
+        .get_current_mode_node()
+        .get_mode_node()
+        .map(|mode_node| DisplayModeNode::new(mode_node, DisplayFormat::SingleLine).to_string())
+        .unwrap_or_else(|| do_now_list.get_current_mode().get_name().to_owned());
+
     let choices = collect_all_currently_shown_do_now_items(do_now_list);
     let selected = MultiSelect::new(
         &format!(
             "Select items to exclude from mode \"{}\" (Space: toggle, Enter: done)|",
-            do_now_list.get_current_mode().get_name()
+            current_mode_label
         ),
         choices,
     )
@@ -778,7 +784,7 @@ async fn present_exclude_from_this_mode_menu(
             let now = Utc::now();
             let in_effect_until = prompt_for_triggers(None, &now, send_to_data_storage_layer).await;
 
-            println!("Current mode id:{:?}", Some(current_mode_id.clone()));
+            println!("Current mode: {}", current_mode_label);
             for action in selected_actions {
                 send_to_data_storage_layer
                     .send(DataLayerCommands::DeclareInTheMomentPriority {
