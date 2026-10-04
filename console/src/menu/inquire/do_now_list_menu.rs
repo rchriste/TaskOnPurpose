@@ -1021,7 +1021,7 @@ mod tests {
                 .get_item_node()
                 .get_item()
                 .get_summary(),
-            "Newest item"
+            "Oldest item"
         );
         assert_eq!(
             items_waiting_on_this_event[1]
@@ -1035,7 +1035,7 @@ mod tests {
                 .get_item_node()
                 .get_item()
                 .get_summary(),
-            "Oldest item"
+            "Newest item"
         );
     }
 
