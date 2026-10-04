@@ -7,7 +7,7 @@ pub(crate) mod pick_what_should_be_done_first;
 pub(crate) mod review_item;
 pub(crate) mod search;
 
-use std::{fmt::Display, iter::once};
+use std::{cmp::Ordering, fmt::Display, iter::once};
 
 use crate::{
     menu::inquire::default_select_page_size,
@@ -549,8 +549,8 @@ pub(crate) async fn present_do_now_list_menu(
 
                         let mut items_waiting_on_this_event: Vec<&ItemStatus<'_>> =
                             event_node.get_waiting_on_this().to_vec();
-                        //Order the list so it is the same each time you look at it and put the most recently created items at the top of the list
-                        sort_items_by_created(&mut items_waiting_on_this_event);
+                        // Order by urgency first (most urgent first), then newest created first.
+                        sort_items_by_urgency_then_created(&mut items_waiting_on_this_event);
                         let list = chain!(
                             once(EventTrigger::ReturnToDoNowList),
                             once(EventTrigger::TriggerEvent {
@@ -849,9 +849,22 @@ pub(crate) fn present_do_now_help() -> Result<(), ()> {
     }
 }
 
-/// Helper function to sort items by creation date (most recent first), matching the production code behavior
-fn sort_items_by_created<'a>(items: &mut Vec<&'a ItemStatus<'a>>) {
-    items.sort_by(|a, b| b.get_created().cmp(a.get_created()));
+/// Helper function to sort items by urgency (most urgent first), then by creation date (most recent first).
+fn sort_items_by_urgency_then_created<'a>(items: &mut Vec<&'a ItemStatus<'a>>) {
+    items.sort_by(|a, b| {
+        let urgency_order = match (a.get_urgency_now(), b.get_urgency_now()) {
+            (Some(a_urgency), Some(b_urgency)) => a_urgency.cmp(b_urgency),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        };
+
+        if urgency_order == Ordering::Equal {
+            a.get_created().cmp(b.get_created())
+        } else {
+            urgency_order
+        }
+    });
 }
 
 pub(crate) fn present_do_now_help_getting_started() -> Result<(), ()> {
@@ -887,7 +900,9 @@ mod tests {
             surreal_item::{SurrealDependency, SurrealItemBuilder, SurrealItemType},
             surreal_tables::SurrealTablesBuilder,
         },
-        menu::inquire::do_now_list_menu::{InquireDoNowListItem, sort_items_by_created},
+        menu::inquire::do_now_list_menu::{
+            InquireDoNowListItem, sort_items_by_urgency_then_created,
+        },
         node::urgency_level_item_with_item_status::UrgencyLevelItemWithItemStatus,
     };
 
@@ -942,7 +957,7 @@ mod tests {
     }
 
     #[test]
-    fn event_trigger_list_orders_items_by_created_date_most_recent_first() {
+    fn event_trigger_list_orders_items_by_urgency_then_created_most_recent_first() {
         use chrono::Duration;
 
         let now = Utc::now();
@@ -997,7 +1012,7 @@ mod tests {
 
         // Get items waiting on this event and sort them as the code does
         let mut items_waiting_on_this_event = event_node.get_waiting_on_this().to_vec();
-        sort_items_by_created(&mut items_waiting_on_this_event);
+        sort_items_by_urgency_then_created(&mut items_waiting_on_this_event);
 
         // Verify the order: newest first, then middle, then oldest
         assert_eq!(items_waiting_on_this_event.len(), 3);
@@ -1147,7 +1162,7 @@ mod tests {
         let event_node = event_nodes.get(&event_id).expect("Event node should exist");
 
         let mut items_waiting_on_this_event = event_node.get_waiting_on_this().to_vec();
-        sort_items_by_created(&mut items_waiting_on_this_event);
+        sort_items_by_urgency_then_created(&mut items_waiting_on_this_event);
 
         // Construct the EventTrigger list as the code does
         let list = chain!(
