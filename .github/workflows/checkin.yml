@@ -32,6 +32,9 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
+    env:
+      # `ring` currently fails to compile on macOS arm64 with `target-cpu=generic`.
+      RUSTFLAGS: -C target-cpu=native
     steps:
     - uses: actions/checkout@v4
     - name: Build
