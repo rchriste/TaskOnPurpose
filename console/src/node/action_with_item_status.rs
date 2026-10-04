@@ -291,7 +291,13 @@ impl<'s> ApplyInTheMomentPriorities<'s> for Vec<WhyInScopeAndActionWithItemStatu
                         choices.swap_remove(position);
                     }
                 }
-                PriorityKind::NotInMode => {}
+                PriorityKind::NotInMode => {
+                    if let Some((position, _)) = choices.iter().find_position(|item_action| {
+                        priority.get_choice() == item_action.get_action()
+                    }) {
+                        choices.swap_remove(position);
+                    }
+                }
             }
         }
 
@@ -324,6 +330,7 @@ mod tests {
     use ahash::HashSet;
     use chrono::Utc;
     use itertools::chain;
+    use surrealdb::RecordId;
 
     use crate::{
         base_data::BaseData,
@@ -459,6 +466,77 @@ mod tests {
                     vec![first_item_action, second_item_action,].len()
                 );
             }
+        }
+    }
+
+    #[test]
+    fn apply_in_the_moment_priorities_when_one_item_is_marked_not_in_mode_it_is_removed() {
+        let current_mode_id: RecordId = ("modes", "work").into();
+        let first_item = SurrealItemBuilder::default()
+            .id(Some(("surreal_item", "1").into()))
+            .summary("First item")
+            .build()
+            .unwrap();
+        let second_item = SurrealItemBuilder::default()
+            .id(Some(("surreal_item", "2").into()))
+            .summary("Second item")
+            .build()
+            .unwrap();
+
+        let in_the_moment_priority = SurrealInTheMomentPriorityBuilder::default()
+            .id(Some(("surreal_in_the_moment_priority", "1").into()))
+            .kind(SurrealPriorityKind::NotInMode)
+            .choice(SurrealAction::MakeProgress(
+                first_item.id.clone().expect("hard coded to a value"),
+            ))
+            .in_effect_until(vec![])
+            .for_mode(Some(current_mode_id.clone()))
+            .build()
+            .unwrap();
+
+        let surreal_tables = SurrealTablesBuilder::default()
+            .surreal_items(vec![first_item.clone(), second_item.clone()])
+            .surreal_in_the_moment_priorities(vec![in_the_moment_priority])
+            .build()
+            .unwrap();
+
+        let now = Utc::now();
+        let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
+        let calculated_data = calculated_data::CalculatedData::new_from_base_data(base_data);
+        let items_status = calculated_data.get_items_status();
+
+        let first_item_status = items_status
+            .get(first_item.id.as_ref().unwrap())
+            .expect("First item status not found");
+        let second_item_status = items_status
+            .get(second_item.id.as_ref().unwrap())
+            .expect("Second item status not found");
+
+        let first_item_action = WhyInScopeAndActionWithItemStatus::new(
+            test_default_mode_why_in_scope(),
+            ActionWithItemStatus::MakeProgress(first_item_status),
+        );
+        let second_item_action = WhyInScopeAndActionWithItemStatus::new(
+            test_default_mode_why_in_scope(),
+            ActionWithItemStatus::MakeProgress(second_item_status),
+        );
+
+        let dut = vec![first_item_action, second_item_action];
+        let result = dut.apply_in_the_moment_priorities(
+            calculated_data.get_in_the_moment_priorities(),
+            Some(&current_mode_id),
+        );
+
+        assert!(result.is_some());
+        let result = result.expect("assert.is_some() should have passed");
+        match result {
+            UrgencyLevelItemWithItemStatus::SingleItem(result) => {
+                assert_eq!(
+                    result.clone_to_surreal_action().get_record_id(),
+                    &second_item.id.unwrap()
+                );
+            }
+            UrgencyLevelItemWithItemStatus::MultipleItems(..) => panic!("Test Failure"),
         }
     }
 
