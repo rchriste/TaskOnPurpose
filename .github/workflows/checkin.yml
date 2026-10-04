@@ -33,8 +33,8 @@ jobs:
   build-macos:
     runs-on: macos-latest
     env:
-      # `ring` currently fails to compile on macOS arm64 with `target-cpu=generic`.
-      RUSTFLAGS: -C target-cpu=native
+      # Clear global Rust flags for macOS; ring fails with explicit target-cpu overrides.
+      RUSTFLAGS: ""
     steps:
     - uses: actions/checkout@v4
     - name: Build
