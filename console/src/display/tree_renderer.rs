@@ -81,10 +81,18 @@ impl<'a, D: fmt::Display> TreeNodeWithDepth<'a, D> {
 
     /// Check if there's a continuation line needed at depth level `i`
     fn has_continuation_at_depth(&self, depth_level: usize) -> bool {
-        self.all_depths
-            .iter()
-            .skip(self.index + 1)
-            .any(|d| *d > depth_level)
+        // A continuation at `depth_level` exists only if we later encounter a sibling
+        // branch at exactly `depth_level + 1` before this level is closed (depth <= level).
+        for next_depth in self.all_depths.iter().skip(self.index + 1) {
+            if *next_depth <= depth_level {
+                return false;
+            }
+            if *next_depth == depth_level + 1 {
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -153,5 +161,55 @@ impl<D: fmt::Display> fmt::Display for ReversedTreeNode<D> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TreeNodeWithDepth;
+
+    #[test]
+    fn tree_node_with_depth_renders_continuations_only_when_branch_is_still_open() {
+        // This shape mirrors a multi-parent chain with branching:
+        // 1 -> 2 -> 3
+        //      -> 3 -> 4
+        //           -> 4 -> 5
+        let depths = vec![1, 2, 3, 2, 3, 4, 4, 5];
+        let nodes = depths
+            .iter()
+            .enumerate()
+            .map(|(idx, depth)| TreeNodeWithDepth::new(*depth, format!("n{}", idx), idx, &depths))
+            .map(|node| format!("{}", node))
+            .collect::<Vec<_>>();
+
+        assert_eq!(nodes[0], "  ┗n0");
+        assert_eq!(nodes[1], "     ┗n1");
+        assert_eq!(nodes[2], "     ┃  ┗n2");
+        assert_eq!(nodes[3], "     ┗n3");
+        assert_eq!(nodes[4], "        ┗n4");
+        assert_eq!(nodes[5], "           ┗n5");
+        assert_eq!(nodes[6], "           ┗n6");
+        assert_eq!(nodes[7], "              ┗n7");
+
+        for line in &nodes {
+            assert!(
+                !line.starts_with("  ┃"),
+                "unexpected top-level continuation in line: {}",
+                line
+            );
+        }
+    }
+
+    #[test]
+    fn tree_node_with_depth_does_not_draw_continuation_for_single_chain() {
+        let depths = vec![1, 2, 3, 4];
+        let nodes = depths
+            .iter()
+            .enumerate()
+            .map(|(idx, depth)| TreeNodeWithDepth::new(*depth, format!("n{}", idx), idx, &depths))
+            .map(|node| format!("{}", node))
+            .collect::<Vec<_>>();
+
+        assert!(nodes.iter().all(|line| !line.contains("┃")));
     }
 }
