@@ -23,22 +23,11 @@ impl<'a, T: fmt::Display> TreeRenderer<'a, T> {
     pub(crate) fn render(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.display_format {
             DisplayFormat::MultiLineTree => self.render_multiline_tree(f),
-            DisplayFormat::MultiLineTreeReversed => self.render_multiline_tree_reversed(f),
             DisplayFormat::SingleLine => self.render_single_line(f),
         }
     }
 
     fn render_multiline_tree(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (j, node) in self.nodes.iter().enumerate() {
-            if j > 0 {
-                writeln!(f)?;
-            }
-            write!(f, "{}", node)?;
-        }
-        Ok(())
-    }
-
-    fn render_multiline_tree_reversed(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (j, node) in self.nodes.iter().enumerate() {
             if j > 0 {
                 writeln!(f)?;
@@ -114,52 +103,6 @@ impl<'a, D: fmt::Display> fmt::Display for TreeNodeWithDepth<'a, D> {
             write!(f, "{}", self.content)?;
         }
 
-        Ok(())
-    }
-}
-
-/// Helper for rendering reversed tree (root first, leaves last)
-pub(crate) struct ReversedTreeNode<D: fmt::Display> {
-    /// Position in reversed order (0 = root)
-    position: usize,
-    content: D,
-    /// Total number of nodes
-    total_nodes: usize,
-}
-
-impl<D: fmt::Display> ReversedTreeNode<D> {
-    pub(crate) fn new(position: usize, content: D, total_nodes: usize) -> Self {
-        Self {
-            position,
-            content,
-            total_nodes,
-        }
-    }
-
-    /// Check if there's a continuation at this indentation level
-    fn has_continuation_at_position(&self, position_level: usize) -> bool {
-        // In reversed tree, continuation exists if there are more nodes after us
-        self.position < self.total_nodes - 1 && position_level < self.position
-    }
-}
-
-impl<D: fmt::Display> fmt::Display for ReversedTreeNode<D> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Root item (position==0) gets no tree characters
-        if self.position == 0 {
-            write!(f, "{}", self.content)?;
-        } else {
-            // Non-root: add tree characters based on position
-            for i in 0..self.position {
-                if i == self.position - 1 {
-                    write!(f, "  ┗{}", self.content)?;
-                } else if self.has_continuation_at_position(i) {
-                    write!(f, "  ┃")?;
-                } else {
-                    write!(f, "   ")?;
-                }
-            }
-        }
         Ok(())
     }
 }

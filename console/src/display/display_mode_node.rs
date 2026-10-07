@@ -18,7 +18,7 @@ impl Display for DisplayModeNode<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let parents = self.mode_node.create_parent_chain();
         match self.display_format {
-            DisplayFormat::MultiLineTree | DisplayFormat::MultiLineTreeReversed => {
+            DisplayFormat::MultiLineTree => {
                 // Extract depths for continuation detection
                 let depths: Vec<usize> = (0..parents.len()).collect();
 

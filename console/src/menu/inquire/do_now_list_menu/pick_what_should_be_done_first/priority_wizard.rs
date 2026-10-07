@@ -234,7 +234,7 @@ pub(crate) async fn priority_wizard_loop<'a>(
         let display_selected = DisplayWhyInScopeAndActionWithItemStatus::new(
             selected_at_random,
             Filter::Active,
-            DisplayFormat::MultiLineTreeReversed,
+            DisplayFormat::MultiLineTree,
         );
 
         println!("\nComparing item:\n{}\n", display_selected);
