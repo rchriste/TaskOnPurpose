@@ -52,7 +52,10 @@ jobs:
 
   build-macos:
         runs-on: macos-latest
-    
+        env:
+          # Clear global Rust flags for macOS; ring fails with explicit target-cpu overrides.
+          RUSTFLAGS: ""
+     
         steps:
         - uses: actions/checkout@v4
         - name: Build
