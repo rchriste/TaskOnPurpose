@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use chrono::Utc;
 use inquire::{InquireError, Select};
 use tokio::sync::mpsc::Sender;
@@ -21,12 +23,19 @@ pub(crate) async fn something_else_should_be_done_first(
         .unwrap();
     let now = Utc::now();
     let base_data = BaseData::new_from_surreal_tables(surreal_tables, now);
-    let list = base_data
+    let mut list = base_data
         .get_active_items()
         .iter()
         .copied()
         .map(DisplayItem::new)
         .collect::<Vec<_>>();
+    list.sort_by(|a, b| {
+        if a.item.get_created() > b.item.get_created() {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        }
+    });
     let selection = Select::new("Select from the below list|", list)
         .with_page_size(default_select_page_size())
         .prompt();
